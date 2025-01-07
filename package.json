@@ -1,0 +1,25 @@
+{
+  "name": "ui-components",
+  "version": "0.0.1",
+  "description": "Some cool ui components",
+  "homepage": "https://github.com/ddroid/ui-components#readme",
+  "bugs": {
+    "url": "https://github.com/ddroid/ui-components/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ddroid/ui-components.git"
+  },
+  "license": "ISC",
+  "author": "Ahmad Munir",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "start": "budo demo/demo.js:bundle.js --open --live",
+    "build": "browserify demo/demo.js -o bundle.js"
+  },
+  "devDependencies": {
+    "browserify": "^17.0.1",
+    "budo": "^11.8.4"
+  }
+}
