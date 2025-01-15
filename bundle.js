@@ -198,12 +198,12 @@ function Page() {
 
   const heading = document.createElement('h1');
   heading.className = pageHeadingClass;
-  heading.textContent = 'Content Area';
+  heading.textContent = 'Theme Widget v0.0.1';
   contentDiv.appendChild(heading);
 
   const paragraph = document.createElement('p');
   paragraph.className = pageParagraphClass;
-  paragraph.textContent = 'Click on the search bar above to see it in action!';
+  paragraph.textContent = 'Click on the search bar below to see it in action!';
   contentDiv.appendChild(paragraph);
   container.appendChild(contentDiv);
   const styleElement = document.createElement('style');
@@ -239,14 +239,16 @@ const style = `
   shadow: 0;
   display: flex;
   align-items: center;
-  flex-direction: column;
+  flex-direction: row;
+  min-height: 2rem;
+  border-radius: 0.5rem;
 }
 
 .iconButton:hover {
   cursor: pointer;
   }
 .iconButton:active {
-  
+  background-color: #303030;
 }
 .separator {
   width: 1px;
@@ -292,6 +294,9 @@ const style = `
 }
 
 .searchResetButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   margin-left: 0;
   padding: 0;
   border: none;
@@ -299,7 +304,7 @@ const style = `
 }
 
 .searchResetButton:hover {
-  background-color: #e5e7eb;
+  cursor: pointer;
 }
 
 .pageContainer {
@@ -318,6 +323,7 @@ const style = `
 .pageHeading {
   font-size: 1.5rem;
   font-weight: bold;
+  color: #6b7280;
 }
 
 .pageParagraph {
