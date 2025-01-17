@@ -1,5 +1,5 @@
 {
-  "name": "themeWiget",
+  "name": "theme-wiget",
   "version": "0.0.1",
   "description": "An app for debuging and testing website's theme. It is a simple app that allows you to change the theme of a website and see the changes in real time. It has 4 components: action-bar(action-wizard),graph-explorer,tabbed-editor,action-history",
   "homepage": "https://github.com/ddroid/ui-components#readme",
@@ -21,5 +21,9 @@
   "devDependencies": {
     "browserify": "^17.0.1",
     "budo": "^11.8.4"
+  },
+  "standard": {
+    "ignore": [
+      "bundle.js"    ]
   }
 }
