@@ -4,9 +4,9 @@ document.body.append(create_component_menu(components))
 
 function create_component_menu (imports) {
   const style = get_theme()
-  const root_element = document.createElement('div')
-  root_element.className = 'root'
-  root_element.innerHTML = `
+  const root = document.createElement('div')
+  root.className = 'root'
+  root.innerHTML = `
     <style>
       ${style}
     </style>
@@ -24,168 +24,155 @@ function create_component_menu (imports) {
     <div class="components-wrapper"></div>
   `
 
-  const menu_list = root_element.querySelector('.menu-list')
-  const components_wrapper = root_element.querySelector('.components-wrapper')
-  const menu_element = root_element.querySelector('.menu')
-  const menu_toggle_button = root_element.querySelector('.menu-toggle-button')
-  const unselect_all_button = root_element.querySelector('.unselect-all-button')
+  const list = root.querySelector('.menu-list')
+  const wrapper = root.querySelector('.components-wrapper')
+  const menu = root.querySelector('.menu')
+  const toggle_btn = root.querySelector('.menu-toggle-button')
+  const unselect_btn = root.querySelector('.unselect-all-button')
 
-  const factories = Object.entries(imports)
-  const checkbox_elements = []
-  const component_outer_wrappers = []
-  const component_names = []
+  const entries = Object.entries(imports)
+  const checkboxes = []
+  const wrappers = []
+  const names = []
   const url_params = new URLSearchParams(window.location.search)
   const checked_param = url_params.get('checked')
-  let initial_checked_items = []
-  const selected_component_name = url_params.get('selected')
-  let currently_selected_wrapper = null
+  let initial_checked = []
+  const selected_name = url_params.get('selected')
+  let current_wrapper = null
 
   if (checked_param) {
     try {
-      initial_checked_items = JSON.parse(checked_param)
-      if (!Array.isArray(initial_checked_items)) {
-        initial_checked_items = []
-      }
-    } catch (error) {
-      console.error('Error parsing checked parameter:', error)
-      initial_checked_items = []
+      initial_checked = JSON.parse(checked_param)
+      if (!Array.isArray(initial_checked)) initial_checked = []
+    } catch (e) {
+      console.error('Error parsing checked parameter:', e)
+      initial_checked = []
     }
   }
 
-  factories.forEach(create_list)
+  entries.forEach(create_list)
 
-  unselect_all_button.onclick = on_unselect_button
-  menu_toggle_button.onclick = on_menu_toggle
-  document.onclick = on_document_click
-
-  scroll_to_selected_component()
-  return root_element
+  unselect_btn.onclick = on_unselect
+  toggle_btn.onclick = on_menu_toggle
+  document.onclick = on_doc_click
+  window.onload = scroll_to_selected
+  
+  return root
 
   function create_list ([name, factory], index) {
-    const menu_item = document.createElement('li')
-    menu_item.className = 'menu-item'
+    const item = document.createElement('li')
+    item.className = 'menu-item'
 
-    const label_element = document.createElement('span')
-    label_element.textContent = name
-    menu_item.append(label_element)
+    const label = document.createElement('span')
+    label.textContent = name
+    item.append(label)
 
-    const checkbox_element = document.createElement('input')
-    checkbox_element.type = 'checkbox'
-    const is_initially_checked = initial_checked_items.includes(index + 1) || initial_checked_items.length === 0
-    checkbox_element.checked = is_initially_checked
-    menu_item.append(checkbox_element)
-    menu_list.append(menu_item)
-    checkbox_elements.push(checkbox_element)
-    component_names.push(name)
+    const checkbox = document.createElement('input')
+    checkbox.type = 'checkbox'
+    const checked = initial_checked.includes(index + 1) || initial_checked.length === 0
+    checkbox.checked = checked
+    item.append(checkbox)
+    list.append(item)
+    checkboxes.push(checkbox)
+    names.push(name)
 
-    const component_outer_wrapper = document.createElement('div')
-    component_outer_wrapper.className = 'component-outer-wrapper'
-    component_outer_wrappers.push(component_outer_wrapper)
+    const outer = document.createElement('div')
+    outer.className = 'component-outer-wrapper'
+    wrappers.push(outer)
 
-    const component_name_div = document.createElement('div')
-    component_name_div.className = 'component-name-label'
-    component_name_div.textContent = name
-    component_outer_wrapper.append(component_name_div)
+    const name_div = document.createElement('div')
+    name_div.className = 'component-name-label'
+    name_div.textContent = name
+    outer.append(name_div)
 
-    const component_wrapper = document.createElement('div')
-    component_wrapper.className = 'component-wrapper'
-    component_wrapper.append(factory())
-    component_outer_wrapper.append(component_wrapper)
-    components_wrapper.append(component_outer_wrapper)
+    const inner = document.createElement('div')
+    inner.className = 'component-wrapper'
+    inner.append(factory())
+    outer.append(inner)
+    wrapper.append(outer)
 
-    component_outer_wrapper.style.display = is_initially_checked ? 'block' : 'none'
+    outer.style.display = checked ? 'block' : 'none'
 
-    checkbox_element.onchange = on_checkbox_change
-    label_element.onclick = on_label_click
+    checkbox.onchange = on_checkbox
+    label.onclick = on_label
 
-    function on_checkbox_change (event) {
-      component_outer_wrapper.style.display = event.target.checked ? 'block' : 'none'
-      update_url(checkbox_elements, name)
+    function on_checkbox (e) {
+      outer.style.display = e.target.checked ? 'block' : 'none'
+      update_url(checkboxes)
     }
+    
+    function on_label () {
+      inner.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      update_url(checkboxes, name)
 
-    function on_label_click () {
-      component_wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      update_url(checkbox_elements, name)
-
-      if (currently_selected_wrapper && currently_selected_wrapper !== component_outer_wrapper) {
-        currently_selected_wrapper.style.backgroundColor = ''
+      if (current_wrapper && current_wrapper !== outer) {
+        current_wrapper.style.backgroundColor = ''
       }
-      component_outer_wrapper.style.backgroundColor = 'lightblue'
-      currently_selected_wrapper = component_outer_wrapper
+      outer.style.backgroundColor = 'lightblue'
+      current_wrapper = outer
     }
   }
 
-  function on_unselect_button () {
-    if (unselect_all_button.textContent === 'Unselect All') {
-      checkbox_elements.forEach(checkbox => {
-        checkbox.checked = false
-      })
-      component_outer_wrappers.forEach(wrapper => {
-        wrapper.style.display = 'none'
-      })
-      unselect_all_button.textContent = 'Select All'
+  function on_unselect () {
+    if (unselect_btn.textContent === 'Unselect All') {
+      checkboxes.forEach(c => c.checked = false)
+      wrappers.forEach(w => w.style.display = 'none')
+      unselect_btn.textContent = 'Select All'
     } else {
-      checkbox_elements.forEach(checkbox => {
-        checkbox.checked = true
-      })
-      component_outer_wrappers.forEach(wrapper => {
-        wrapper.style.display = 'block'
-      })
-      unselect_all_button.textContent = 'Unselect All'
+      checkboxes.forEach(c => c.checked = true)
+      wrappers.forEach(w => w.style.display = 'block')
+      unselect_btn.textContent = 'Unselect All'
     }
-    update_url(checkbox_elements)
-    if (currently_selected_wrapper) {
-      currently_selected_wrapper.style.backgroundColor = ''
-      currently_selected_wrapper = null
+    update_url(checkboxes)
+    if (current_wrapper) {
+      current_wrapper.style.backgroundColor = ''
+      current_wrapper = null
     }
   }
 
-  function on_menu_toggle (event) {
-    event.stopPropagation()
-    menu_element.classList.toggle('hidden')
+  function on_menu_toggle (e) {
+    e.stopPropagation()
+    menu.classList.toggle('hidden')
   }
 
-  function on_document_click (event) {
-    if (!menu_element.classList.contains('hidden') && !menu_element.contains(event.target) && !menu_toggle_button.contains(event.target)) {
-      menu_element.classList.add('hidden')
+  function on_doc_click (e) {
+    if (!menu.classList.contains('hidden') && !menu.contains(e.target) && !toggle_btn.contains(e.target)) {
+      menu.classList.add('hidden')
     }
   }
 
-  function scroll_to_selected_component () {
-    if (selected_component_name) {
-      const selected_index = component_names.indexOf(selected_component_name)
-      if (selected_index !== -1) {
-        const selected_wrapper = component_outer_wrappers[selected_index]
-        selected_wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        selected_wrapper.style.backgroundColor = 'lightblue'
-        currently_selected_wrapper = selected_wrapper
+  function scroll_to_selected () {
+    if (selected_name) {
+      const i = names.indexOf(selected_name)
+      if (i !== -1) {
+        const w = wrappers[i]
+        w.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        w.style.backgroundColor = 'lightblue'
+        current_wrapper = w
       }
     }
   }
 
-  function update_url (checkboxes, selected_name) {
-    const checked_indices = checkboxes.reduce(function (acc, checkbox, index) {
-      if (checkbox.checked) {
-        acc.push(index + 1)
-      }
+  function update_url (checkboxes, selected) {
+    const checked = checkboxes.reduce((acc, c, i) => {
+      if (c.checked) acc.push(i + 1)
       return acc
     }, [])
 
     const params = new URLSearchParams(window.location.search)
-    if (checked_indices.length > 0 && checked_indices.length < checkboxes.length) {
-      params.set('checked', `[${checked_indices.join(',')}]`)
+    if (checked.length > 0 && checked.length < checkboxes.length) {
+      params.set('checked', `[${checked.join(',')}]`)
     } else {
       params.delete('checked')
     }
 
-    if (selected_name) {
-      params.set('selected', selected_name)
+    if (selected) {
+      params.set('selected', selected)
     } else {
       params.delete('selected')
     }
 
-    const new_url = `${window.location.pathname}?${params.toString()}`
-    window.history.pushState(null, '', new_url)
+    window.history.pushState(null, '', `${window.location.pathname}?${params}`)
   }
 }
 
