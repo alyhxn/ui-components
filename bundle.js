@@ -1,23 +1,21 @@
 (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
-module.exports.action_bar = require('Action-Bar')
-module.exports.chat_history = require('Chat-History')
-module.exports.graph_explorer = require('Graph-Explorer')
-module.exports.tabbed_editor = require('Tabbed-Editor')
-module.exports.search_bar = require('Action-Bar/search-bar')
+module.exports.action_bar = require('action_bar')
+module.exports.chat_history = require('chat_history')
+module.exports.graph_explorer = require('graph_explorer')
+module.exports.tabbed_editor = require('tabbed_editor')
+module.exports.search_bar = require('action_bar/search_bar')
 
-},{"Action-Bar":2,"Action-Bar/search-bar":3,"Chat-History":4,"Graph-Explorer":5,"Tabbed-Editor":6}],2:[function(require,module,exports){
+},{"action_bar":2,"action_bar/search_bar":3,"chat_history":4,"graph_explorer":5,"tabbed_editor":7}],2:[function(require,module,exports){
 const { terminal, wand, help } = require('icons')
-const SearchBar = require('Action-Bar/search-bar')
+const bar = require('action_bar/search_bar')
 
 module.exports = action_bar
 
 function action_bar () {
-  const search_bar = SearchBar('Home > Documents > Current > theme')
+  const search_bar = bar('Home > Documents > Current > theme')
 
   // creating parent
   const el = document.createElement('div')
-  el.className = 'action-bar-container'
-  el.id = 'action_bar'
   const shadow = el.attachShadow({ mode: 'closed' })
 
   // styling
@@ -27,29 +25,28 @@ function action_bar () {
   shadow.adoptedStyleSheets = [sheet]
 
   shadow.innerHTML = `
-  <div class = 'action-bar-container'>
+  <div class="action-bar-container">
     <div class="action-bar-content">
-        <button class='icon-button' id="Open Terminal">
-            ${terminal()}
-        </button>
-        <div class='separator'></div>
-        <button class='icon-button' id="Magic Wand">
-            ${wand()}
-        </button>
-        <div class='separator'></div>
-        <button class='icon-button' id="Help">
-            ${help()}
-        </button>
+      <button class="icon-button">
+        ${terminal()}
+      </button>
+      <div class="separator"></div>
+      <button class="icon-button">
+        ${wand()}
+      </button>
+      <div class="separator"></div>
+      <searchbar></searchbar>
+      <button class="icon-button">
+        ${help()}
+      </button>
     </div>
-  </div>
-  `
+  </div>`
 
-  const separator_element = shadow.querySelector('.separator:last-of-type')
-  shadow.querySelector('.action-bar-content').insertBefore(search_bar, separator_element)
+  shadow.querySelector('searchbar').replaceWith(search_bar)
 
   // to add a click event listener to the buttons:
-  // const terminal_button = shadow.querySelector(`.icon-button[id="Open Terminal"]`)
-  // terminal_button.addEventListener('click', () => { console.log('Terminal button clicked') })
+  // const [btn1, btn2, btn3] = shadow.querySelectorAll('button')
+  // btn1.addEventListener('click', () => { console.log('Terminal button clicked') })
 
   return el
 }
@@ -61,6 +58,7 @@ function get_theme () { // opts
       align-items: center;
       background-color: #212121;
       padding: 0.5rem;
+      // min-width: 456px
   }
 
   .action-bar-content {
@@ -98,7 +96,7 @@ function get_theme () { // opts
 `
 }
 
-},{"Action-Bar/search-bar":3,"icons":7}],3:[function(require,module,exports){
+},{"action_bar/search_bar":3,"icons":6}],3:[function(require,module,exports){
 const { search, close } = require('icons')
 
 module.exports = search_bar
@@ -113,14 +111,13 @@ function search_bar (path = 'Home > Documents > Current') {
   shadow.adoptedStyleSheets = [sheet]
 
   shadow.innerHTML = `
-    <div class="search-input-container">
-      <div class="search-input-content">
-        <div class="search-input-text">${path}</div>
-        <input type="text" class="search-input" style="display: none;">
-      </div>
-      <button class="search-reset-button">${search()}</button>
+  <div class="search-input-container">
+    <div class="search-input-content">
+      <div class="search-input-text">${path}</div>
+      <input type="text" class="search-input" style="display: none;">
     </div>
-  `
+    <button class="search-reset-button">${search()}</button>
+  </div>`
 
   const input_container = shadow.querySelector('.search-input-container')
   const input_content = shadow.querySelector('.search-input-content')
@@ -248,7 +245,7 @@ function get_theme (opts) {
   `
 }
 
-},{"icons":7}],4:[function(require,module,exports){
+},{"icons":6}],4:[function(require,module,exports){
 module.exports = () => {
     const div = document.createElement('div')
       div.innerHTML = `<h1>Chat-History</h1>`
@@ -263,13 +260,6 @@ module.exports = () => {
     return div;
   };
 },{}],6:[function(require,module,exports){
-module.exports = () => {
-    const div = document.createElement('div');
-      div.innerHTML = `<h1>Tabbed-Editor</h1>`;
-      div.id = 'tabbed_editor';
-    return div;
-  };
-},{}],7:[function(require,module,exports){
 module.exports = {
   terminal,
   wand,
@@ -295,8 +285,7 @@ function terminal() {
         <rect width="22" height="20" fill="white"/>
       </clipPath>
     </defs>
-  </svg>
-`
+  </svg>`
 
   const container = document.createElement('div')
   container.innerHTML = path
@@ -406,39 +395,47 @@ function crumb() {
   return container.outerHTML
 }
 
+},{}],7:[function(require,module,exports){
+module.exports = () => {
+    const div = document.createElement('div');
+      div.innerHTML = `<h1>Tabbed-Editor</h1>`;
+      div.id = 'tabbed_editor';
+    return div;
+  };
 },{}],8:[function(require,module,exports){
 const components = require('..')
 
 document.body.append(create_component_menu(components))
 
 function create_component_menu (imports) {
-  const style = get_theme()
-  const root = document.createElement('div')
-  root.className = 'root'
-  root.innerHTML = `
-    <style>
-      ${style}
-    </style>
-    <div class="nav-bar-container">
-      <div class="nav-bar">
-        <button class="menu-toggle-button">☰ MENU</button>
-        <div class="menu hidden">
-          <div class="menu-header">
-            <button class="unselect-all-button">Unselect All</button>
-          </div>
-          <ul class="menu-list"></ul>
+  const el = document.createElement('div')
+  const shadow = el.attachShadow({ mode: 'closed' })
+  shadow.innerHTML = `
+  <div class="nav-bar-container">
+    <div class="nav-bar">
+      <button class="menu-toggle-button">☰ MENU</button>
+      <div class="menu hidden">
+        <div class="menu-header">
+          <button class="unselect-all-button">Unselect All</button>
         </div>
+        <ul class="menu-list"></ul>
       </div>
     </div>
-    <div class="components-wrapper"></div>
-  `
-
-  const list = root.querySelector('.menu-list')
-  const wrapper = root.querySelector('.components-wrapper')
-  const menu = root.querySelector('.menu')
-  const toggle_btn = root.querySelector('.menu-toggle-button')
-  const unselect_btn = root.querySelector('.unselect-all-button')
-
+  </div>
+  <div class="components-wrapper"></div>`
+  // styling
+  const sheet = new CSSStyleSheet()
+  const opts = {}
+  sheet.replaceSync(get_theme(opts))
+  shadow.adoptedStyleSheets = [sheet]
+  document.body.style.margin = 0
+  // refering to template
+  const list = shadow.querySelector('.menu-list')
+  const wrapper = shadow.querySelector('.components-wrapper')
+  const menu = shadow.querySelector('.menu')
+  const toggle_btn = shadow.querySelector('.menu-toggle-button')
+  const unselect_btn = shadow.querySelector('.unselect-all-button')
+  // helper variables
   const entries = Object.entries(imports)
   const checkboxes = []
   const wrappers = []
@@ -448,7 +445,7 @@ function create_component_menu (imports) {
   let initial_checked = []
   const selected_name = url_params.get('selected')
   let current_wrapper = null
-
+  // events
   if (checked_param) {
     try {
       initial_checked = JSON.parse(checked_param)
@@ -466,42 +463,35 @@ function create_component_menu (imports) {
   document.onclick = on_doc_click
   window.onload = scroll_to_selected
   
-  return root
+  return el
 
   function create_list ([name, factory], index) {
-    const item = document.createElement('li')
-    item.className = 'menu-item'
-
-    const label = document.createElement('span')
-    label.textContent = name
-    item.append(label)
-
-    const checkbox = document.createElement('input')
-    checkbox.type = 'checkbox'
-    const checked = initial_checked.includes(index + 1) || initial_checked.length === 0
-    checkbox.checked = checked
-    item.append(checkbox)
-    list.append(item)
+    const checked = initial_checked.includes(index + 1) || initial_checked.length === 0  
+    // Menu List
+    const menu_item = document.createElement('li')
+    menu_item.className = 'menu-item'
+    menu_item.innerHTML = `
+    <span>${name}</span>
+    <input type="checkbox" ${checked ? 'checked' : ''}>`
+    const label = menu_item.querySelector('span')
+    const checkbox = menu_item.querySelector('input')
+  
+    list.append(menu_item)
     checkboxes.push(checkbox)
     names.push(name)
 
+    // Actual Component
     const outer = document.createElement('div')
     outer.className = 'component-outer-wrapper'
-    wrappers.push(outer)
-
-    const name_div = document.createElement('div')
-    name_div.className = 'component-name-label'
-    name_div.textContent = name
-    outer.append(name_div)
-
-    const inner = document.createElement('div')
-    inner.className = 'component-wrapper'
-    inner.append(factory())
-    outer.append(inner)
-    wrapper.append(outer)
-
     outer.style.display = checked ? 'block' : 'none'
-
+    outer.innerHTML = `
+    <div class="component-name-label">${name}</div>
+    <div class="component-wrapper"></div>`
+    wrappers.push(outer)
+    const inner = outer.querySelector('.component-wrapper')
+    inner.append(factory())
+    wrapper.append(outer)
+    // event
     checkbox.onchange = on_checkbox
     label.onclick = on_label
 
@@ -509,11 +499,10 @@ function create_component_menu (imports) {
       outer.style.display = e.target.checked ? 'block' : 'none'
       update_url(checkboxes)
     }
-    
+  
     function on_label () {
-      inner.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      inner.scrollIntoView({ behavior: 'smooth', block: 'center' })
       update_url(checkboxes, name)
-
       if (current_wrapper && current_wrapper !== outer) {
         current_wrapper.style.backgroundColor = ''
       }
@@ -555,7 +544,7 @@ function create_component_menu (imports) {
       const i = names.indexOf(selected_name)
       if (i !== -1) {
         const w = wrappers[i]
-        w.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        w.scrollIntoView({ behavior: 'smooth', block: 'center' })
         w.style.backgroundColor = 'lightblue'
         current_wrapper = w
       }
@@ -587,21 +576,6 @@ function create_component_menu (imports) {
 
 function get_theme () {
   return `
-    body {
-      background-color: #f0f0f0;
-      margin: 0;
-      padding: 0;
-    }
-
-    .root {
-      display: flex;
-      flex-direction: column;
-      font-family: sans-serif;
-      background-color: #f5f5f5;
-      padding: 0;
-      margin: 0;
-    }
-
     .nav-bar-container {
       position: sticky;
       top: 0;
@@ -728,4 +702,5 @@ function get_theme () {
     }
   `
 }
+
 },{"..":1}]},{},[8]);

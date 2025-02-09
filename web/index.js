@@ -3,33 +3,34 @@ const components = require('..')
 document.body.append(create_component_menu(components))
 
 function create_component_menu (imports) {
-  const style = get_theme()
-  const root = document.createElement('div')
-  root.className = 'root'
-  root.innerHTML = `
-    <style>
-      ${style}
-    </style>
-    <div class="nav-bar-container">
-      <div class="nav-bar">
-        <button class="menu-toggle-button">☰ MENU</button>
-        <div class="menu hidden">
-          <div class="menu-header">
-            <button class="unselect-all-button">Unselect All</button>
-          </div>
-          <ul class="menu-list"></ul>
+  const el = document.createElement('div')
+  const shadow = el.attachShadow({ mode: 'closed' })
+  shadow.innerHTML = `
+  <div class="nav-bar-container">
+    <div class="nav-bar">
+      <button class="menu-toggle-button">☰ MENU</button>
+      <div class="menu hidden">
+        <div class="menu-header">
+          <button class="unselect-all-button">Unselect All</button>
         </div>
+        <ul class="menu-list"></ul>
       </div>
     </div>
-    <div class="components-wrapper"></div>
-  `
-
-  const list = root.querySelector('.menu-list')
-  const wrapper = root.querySelector('.components-wrapper')
-  const menu = root.querySelector('.menu')
-  const toggle_btn = root.querySelector('.menu-toggle-button')
-  const unselect_btn = root.querySelector('.unselect-all-button')
-
+  </div>
+  <div class="components-wrapper"></div>`
+  // styling
+  const sheet = new CSSStyleSheet()
+  const opts = {}
+  sheet.replaceSync(get_theme(opts))
+  shadow.adoptedStyleSheets = [sheet]
+  document.body.style.margin = 0
+  // refering to template
+  const list = shadow.querySelector('.menu-list')
+  const wrapper = shadow.querySelector('.components-wrapper')
+  const menu = shadow.querySelector('.menu')
+  const toggle_btn = shadow.querySelector('.menu-toggle-button')
+  const unselect_btn = shadow.querySelector('.unselect-all-button')
+  // helper variables
   const entries = Object.entries(imports)
   const checkboxes = []
   const wrappers = []
@@ -39,7 +40,7 @@ function create_component_menu (imports) {
   let initial_checked = []
   const selected_name = url_params.get('selected')
   let current_wrapper = null
-
+  // events
   if (checked_param) {
     try {
       initial_checked = JSON.parse(checked_param)
@@ -57,42 +58,35 @@ function create_component_menu (imports) {
   document.onclick = on_doc_click
   window.onload = scroll_to_selected
   
-  return root
+  return el
 
   function create_list ([name, factory], index) {
-    const item = document.createElement('li')
-    item.className = 'menu-item'
-
-    const label = document.createElement('span')
-    label.textContent = name
-    item.append(label)
-
-    const checkbox = document.createElement('input')
-    checkbox.type = 'checkbox'
-    const checked = initial_checked.includes(index + 1) || initial_checked.length === 0
-    checkbox.checked = checked
-    item.append(checkbox)
-    list.append(item)
+    const checked = initial_checked.includes(index + 1) || initial_checked.length === 0  
+    // Menu List
+    const menu_item = document.createElement('li')
+    menu_item.className = 'menu-item'
+    menu_item.innerHTML = `
+    <span>${name}</span>
+    <input type="checkbox" ${checked ? 'checked' : ''}>`
+    const label = menu_item.querySelector('span')
+    const checkbox = menu_item.querySelector('input')
+  
+    list.append(menu_item)
     checkboxes.push(checkbox)
     names.push(name)
 
+    // Actual Component
     const outer = document.createElement('div')
     outer.className = 'component-outer-wrapper'
-    wrappers.push(outer)
-
-    const name_div = document.createElement('div')
-    name_div.className = 'component-name-label'
-    name_div.textContent = name
-    outer.append(name_div)
-
-    const inner = document.createElement('div')
-    inner.className = 'component-wrapper'
-    inner.append(factory())
-    outer.append(inner)
-    wrapper.append(outer)
-
     outer.style.display = checked ? 'block' : 'none'
-
+    outer.innerHTML = `
+    <div class="component-name-label">${name}</div>
+    <div class="component-wrapper"></div>`
+    wrappers.push(outer)
+    const inner = outer.querySelector('.component-wrapper')
+    inner.append(factory())
+    wrapper.append(outer)
+    // event
     checkbox.onchange = on_checkbox
     label.onclick = on_label
 
@@ -100,11 +94,10 @@ function create_component_menu (imports) {
       outer.style.display = e.target.checked ? 'block' : 'none'
       update_url(checkboxes)
     }
-    
+  
     function on_label () {
-      inner.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      inner.scrollIntoView({ behavior: 'smooth', block: 'center' })
       update_url(checkboxes, name)
-
       if (current_wrapper && current_wrapper !== outer) {
         current_wrapper.style.backgroundColor = ''
       }
@@ -146,7 +139,7 @@ function create_component_menu (imports) {
       const i = names.indexOf(selected_name)
       if (i !== -1) {
         const w = wrappers[i]
-        w.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        w.scrollIntoView({ behavior: 'smooth', block: 'center' })
         w.style.backgroundColor = 'lightblue'
         current_wrapper = w
       }
@@ -178,21 +171,6 @@ function create_component_menu (imports) {
 
 function get_theme () {
   return `
-    body {
-      background-color: #f0f0f0;
-      margin: 0;
-      padding: 0;
-    }
-
-    .root {
-      display: flex;
-      flex-direction: column;
-      font-family: sans-serif;
-      background-color: #f5f5f5;
-      padding: 0;
-      margin: 0;
-    }
-
     .nav-bar-container {
       position: sticky;
       top: 0;
