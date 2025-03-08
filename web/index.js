@@ -60,7 +60,7 @@ function create_component_menu (imports) {
   
   return el
 
-  function create_list ([name, factory], index) {
+  async function create_list ([name, factory], index) {
     const checked = initial_checked.includes(index + 1) || initial_checked.length === 0  
     // Menu List
     const menu_item = document.createElement('li')
@@ -84,7 +84,7 @@ function create_component_menu (imports) {
     <div class="component-wrapper"></div>`
     wrappers.push(outer)
     const inner = outer.querySelector('.component-wrapper')
-    inner.append(factory())
+    inner.append(await factory())
     wrapper.append(outer)
     // event
     checkbox.onchange = on_checkbox

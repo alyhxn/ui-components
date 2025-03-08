@@ -16,7 +16,9 @@
   "main": "src/index.js",
   "scripts": {
     "start": "budo web/index.js:bundle.js --open --live",
-    "build": "browserify web/index.js -o bundle.js"
+    "build": "browserify web/index.js -o bundle.js",
+    "start:act": "budo src/node_modules/action_bar/boot.js:src/node_modules/action_bar/bundle.js  --dir ./ --live --open",
+    "build:act": "browserify src/node_modules/action_bar/boot.js > src/node_modules/action_bar/bundle.js"
   },
   "devDependencies": {
     "browserify": "^17.0.1",
