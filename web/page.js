@@ -1,4 +1,4 @@
-const STATE = require('../STATE')
+const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
 const { sdb, subs: [get] } = statedb(fallback_module)
 function fallback_module () {
@@ -27,7 +27,8 @@ function fallback_module () {
 /******************************************************************************
   PAGE
 ******************************************************************************/
-const app = require('./action')
+const components = require('..')
+const app = require('./index')
 const sheet = new CSSStyleSheet()
 config().then(() => boot({ sid: '' }))
 
@@ -73,18 +74,18 @@ async function boot (opts) {
   // ELEMENTS
   // ----------------------------------------
   // desktop
-  shadow.append(await app(subs[1]))
+  console.log(subs)
+  shadow.append(await app(subs[1], components))
 
   // ----------------------------------------
   // INIT
   // ----------------------------------------
-
   function onbatch (batch) {
     for (const { type, data } of batch) {
       on[type] && on[type](data)
     }
   }
-}
-async function inject (data) {
-  sheet.replaceSync(data.join('\n'))
+  async function inject (data) {
+    sheet.replaceSync(data.join('\n'))
+  }
 }

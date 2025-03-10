@@ -1,8 +1,154 @@
-const components = require('..')
-
-document.body.append(create_component_menu(components))
-
-function create_component_menu (imports) {
+const STATE = require('../src/node_modules/STATE')
+const statedb = STATE(__filename)
+const { sdb, subs: [get] } = statedb(fallback_module)
+function fallback_module (){
+  return {
+    api: fallback_instance,
+    _: {}
+  }
+  function fallback_instance () {
+    return {
+      _: {},
+      drive: {
+        style: {
+          'theme.css': {
+            raw: `
+            .nav-bar-container {
+              position: sticky;
+              top: 0;
+              z-index: 100;
+              background-color: #e0e0e0;
+            }
+  
+            .nav-bar {
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              padding: 10px 20px;
+              background-color: #e0e0e0;
+              border-bottom: 2px solid #333;
+            }
+  
+            .menu-toggle-button {
+              padding: 10px;
+              background-color: #e0e0e0;
+              border: none;
+              cursor: pointer;
+              border-radius: 5px;
+            }
+  
+            .menu.hidden {
+              display: none;
+            }
+  
+            .menu {
+              display: block;
+              position: absolute;
+              top: 100%;
+              left: 50%;
+              transform: translateX(-50%);
+              width: 200px;
+              background-color: #f0f0f0;
+              padding: 10px;
+              border-radius: 0 0 5px 5px;
+              box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            }
+  
+            .menu-header {
+              margin-bottom: 10px;
+              text-align: center;
+            }
+  
+            .unselect-all-button {
+              padding: 8px 12px;
+              border: none;
+              background-color: #d0d0d0;
+              cursor: pointer;
+              border-radius: 5px;
+              width: 100%;
+            }
+  
+            .menu-list {
+              list-style: none;
+              padding: 0;
+              margin: 0;
+              max-height: 400px;
+              overflow-y: auto;
+              background-color: #f0f0f0;
+            }
+  
+            .menu-list::-webkit-scrollbar {
+              width: 0;
+              background: transparent;
+            }
+  
+            .menu-list::-webkit-scrollbar-thumb {
+              background: transparent;
+            }
+  
+            .menu-item {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 8px 0;
+              border-bottom: 1px solid #ccc;
+              cursor: pointer;
+            }
+  
+            .menu-item:last-child {
+              border-bottom: none;
+            }
+  
+            .component-container {
+              flex-grow: 1;
+              padding-top: 20px + 50px;
+              padding-left: 20px;
+              padding-right: 20px;
+              padding-bottom: 20px;
+            }
+  
+            .components-wrapper {
+              width: 95%;
+              margin: 0 auto;
+              padding: 2.5%;
+            }
+  
+            .component-outer-wrapper {
+              margin-bottom: 20px;
+              padding: 0px 0px 10px 0px;
+            }
+  
+            .component-name-label {
+              background-color:transparent;
+              padding: 8px 15px;
+              text-align: center;
+              font-weight: bold;
+            }
+  
+            .component-wrapper {
+              padding: 15px;
+              border:3px solid #666;
+              resize:both;
+              overflow: auto;
+              border-radius: 0px;
+              background-color:#ffffff;
+            }
+  
+            .component-wrapper:last-child {
+              margin-bottom: 0;
+            }`
+          }
+        }
+      }
+    }
+  }
+}
+module.exports = create_component_menu
+async function create_component_menu (opts, imports) {
+  const { id, sdb } = await get(opts.sid)
+  const on = {
+    style: inject
+  }
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
@@ -19,11 +165,9 @@ function create_component_menu (imports) {
   </div>
   <div class="components-wrapper"></div>`
   // styling
-  const sheet = new CSSStyleSheet()
-  const opts = {}
-  sheet.replaceSync(get_theme(opts))
-  shadow.adoptedStyleSheets = [sheet]
   document.body.style.margin = 0
+  const sheet = new CSSStyleSheet()
+  shadow.adoptedStyleSheets = [sheet]
   // refering to template
   const list = shadow.querySelector('.menu-list')
   const wrapper = shadow.querySelector('.components-wrapper')
@@ -57,7 +201,7 @@ function create_component_menu (imports) {
   toggle_btn.onclick = on_menu_toggle
   document.onclick = on_doc_click
   window.onload = scroll_to_selected
-  
+  const subs = await sdb.watch(onbatch)
   return el
 
   async function create_list ([name, factory], index) {
@@ -167,133 +311,14 @@ function create_component_menu (imports) {
 
     window.history.pushState(null, '', `${window.location.pathname}?${params}`)
   }
-}
 
-function get_theme () {
-  return `
-    .nav-bar-container {
-      position: sticky;
-      top: 0;
-      z-index: 100;
-      background-color: #e0e0e0;
+  function onbatch (batch) {
+    for (const { type, data } of batch) {
+      on[type] && on[type](data)
     }
+  }
 
-    .nav-bar {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      padding: 10px 20px;
-      background-color: #e0e0e0;
-      border-bottom: 2px solid #333;
-    }
-
-    .menu-toggle-button {
-      padding: 10px;
-      background-color: #e0e0e0;
-      border: none;
-      cursor: pointer;
-      border-radius: 5px;
-    }
-
-    .menu.hidden {
-      display: none;
-    }
-
-    .menu {
-      display: block;
-      position: absolute;
-      top: 100%;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 200px;
-      background-color: #f0f0f0;
-      padding: 10px;
-      border-radius: 0 0 5px 5px;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-    }
-
-    .menu-header {
-      margin-bottom: 10px;
-      text-align: center;
-    }
-
-    .unselect-all-button {
-      padding: 8px 12px;
-      border: none;
-      background-color: #d0d0d0;
-      cursor: pointer;
-      border-radius: 5px;
-      width: 100%;
-    }
-
-    .menu-list {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-      max-height: 400px;
-      overflow-y: auto;
-      background-color: #f0f0f0;
-    }
-
-    .menu-list::-webkit-scrollbar {
-      width: 0;
-      background: transparent;
-    }
-
-    .menu-list::-webkit-scrollbar-thumb {
-      background: transparent;
-    }
-
-    .menu-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px 0;
-      border-bottom: 1px solid #ccc;
-      cursor: pointer;
-    }
-
-    .menu-item:last-child {
-      border-bottom: none;
-    }
-
-    .component-container {
-      flex-grow: 1;
-      padding-top: 20px + 50px;
-      padding-left: 20px;
-      padding-right: 20px;
-      padding-bottom: 20px;
-    }
-
-    .components-wrapper {
-      width: 95%;
-      margin: 0 auto;
-      padding: 2.5%;
-    }
-
-    .component-outer-wrapper {
-      margin-bottom: 20px;
-      padding: 0px 0px 10px 0px;
-    }
-
-    .component-name-label {
-      background-color:transparent;
-      padding: 8px 15px;
-      text-align: center;
-      font-weight: bold;
-    }
-
-    .component-wrapper {
-      padding: 15px;
-      border:3px solid #666;
-      resize:both;
-      overflow: auto;
-      border-radius: 0px;
-      background-color:#ffffff;
-    }
-
-    .component-wrapper:last-child {
-      margin-bottom: 0;
-    }
-  `
+  async function inject (data) {
+    sheet.replaceSync(data.join('\n'))
+  }
 }

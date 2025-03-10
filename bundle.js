@@ -1,4 +1,11 @@
 (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
+module.exports.action_bar = require('action_bar/action')
+module.exports.chat_history = require('chat_history')
+module.exports.graph_explorer = require('graph_explorer')
+module.exports.tabbed_editor = require('tabbed_editor')
+module.exports.search_bar = require('search_bar')
+
+},{"action_bar/action":3,"chat_history":4,"graph_explorer":5,"search_bar":8,"tabbed_editor":9}],2:[function(require,module,exports){
 const localdb = require('localdb')
 const db = localdb()
 /** Data stored in a entry in db by STATE (Schema): 
@@ -772,7 +779,7 @@ async function make_input_map (inputs) {
 
 
 module.exports = STATE
-},{"localdb":6}],2:[function(require,module,exports){
+},{"localdb":7}],3:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -781,19 +788,21 @@ function fallback_module () {
   return {
     api: fallback_instance,
     _: {
-      search: {
-        $: ''
+      search_bar: {
+        $: ([app]) => app()
       }
     }
   }
   function fallback_instance () {
     return {
       _: {
-        0: ''
+        search_bar: {
+          0: ''
+        }
       },
       drive: {
         style: {
-          'theme.css':{
+          'theme.css': {
             raw: `
               .action-bar-container {
                   display: flex;
@@ -842,21 +851,18 @@ function fallback_module () {
     }
   }
 }
-
 const { terminal, wand, help } = require('icons')
-const bar = require('search_bar')
+const search_bar = require('search_bar')
 
 module.exports = action_bar
 
 async function action_bar (opts) {
-  // creating parent
   const { id, sdb } = await get(opts.sid)
   const on = {
     style: inject
   }
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
-  const sheet = new CSSStyleSheet()
   shadow.innerHTML = `
   <div class="action-bar-container">
     <div class="action-bar-content">
@@ -875,165 +881,42 @@ async function action_bar (opts) {
     </div>
   </div>`
   const subs = await sdb.watch(onbatch)
-  console.log(subs)
-
-  async function onbatch (batch) {
-    for (const { type, data } of batch) {
-      on[type] && on[type](data)
-    }
-  }
-  shadow.querySelector('searchbar').replaceWith(bar(subs[0]))
+  console.log(`actionbar subs: `, subs)
+  search_bar(subs[0]).then(el => shadow.querySelector('searchbar').replaceWith(el))
 
   // to add a click event listener to the buttons:
   // const [btn1, btn2, btn3] = shadow.querySelectorAll('button')
   // btn1.addEventListener('click', () => { console.log('Terminal button clicked') })
 
   return el
+  function onbatch (batch) {
+    for (const { type, data } of batch) {
+      on[type] && on[type](data)
+    }
+  }
   function inject(data) {
+    const sheet = new CSSStyleSheet()
     sheet.replaceSync(data)
     shadow.adoptedStyleSheets = [sheet]
   }
 }
 
 }).call(this)}).call(this,"/src/node_modules/action_bar/action.js")
-},{"STATE":1,"icons":5,"search_bar":7}],3:[function(require,module,exports){
-patch_cache_in_browser(arguments[4], arguments[5])
-
-function patch_cache_in_browser (source_cache, module_cache) {
-  const meta = { modulepath: ['page'], paths: {} }
-  for (const key of Object.keys(source_cache)) {
-    const [module, names] = source_cache[key]
-    const dependencies = names || {}
-    source_cache[key][0] = patch(module, dependencies, meta)
-  }
-  function patch (module, dependencies, meta) {
-    const MAP = {}
-    for (const [name, number] of Object.entries(dependencies)) MAP[name] = number
-    return (...args) => {
-      const original = args[0]
-      require.cache = module_cache
-      require.resolve = resolve
-      args[0] = require
-      return module(...args)
-      function require (name) {
-        const identifier = resolve(name)
-        if (name.endsWith('node_modules/STATE')) {
-          const modulepath = meta.modulepath.join('/')
-          const original_export = require.cache[identifier] || (require.cache[identifier] = original(name))
-          const exports = (...args) => original_export(...args, modulepath)
-          return exports
-        } else if (require.cache[identifier]) return require.cache[identifier]
-        else {
-          const counter = meta.modulepath.concat(name).join('/')
-          if (!meta.paths[counter]) meta.paths[counter] = 0
-          const localid = `${name}${meta.paths[counter] ? '#' + meta.paths[counter] : ''}`
-          meta.paths[counter]++
-          meta.modulepath.push(localid)
-        }
-        const exports = require.cache[identifier] = original(name)
-        if (!name.endsWith('node_modules/STATE')) meta.modulepath.pop(name)
-        return exports
-      }
-    }
-    function resolve (name) { return MAP[name] }
-  }
-}
-require('./page.js') // or whatever is otherwise the main entry of our project
-},{"./page.js":4}],4:[function(require,module,exports){
-(function (__filename){(function (){
-const STATE = require('STATE')
-const statedb = STATE(__filename)
-const { sdb, subs: [get] } = statedb(fallback_module)
-function fallback_module () {
-  return {
-    _: {
-      app: {
-        $: '',
-        0: override_app
-      }
-    },
-    drive: {
-      theme: {
-        'style.css': {
-          raw: 'body { font-family: \'system-ui\'; }'
-        }
-      }
-    }
-  }
-
-  function override_app ([app]) {
-    const data = app()
-    return data
-  }
-}
-
-/******************************************************************************
-  PAGE
-******************************************************************************/
-const app = require('./action.js')
-const sheet = new CSSStyleSheet()
-config().then(() => boot({ sid: '' }))
-
-async function config () {
-  // const path = path => new URL(`../src/node_modules/${path}`, `file://${__dirname}`).href.slice(8)
-  const html = document.documentElement
-  const meta = document.createElement('meta')
-  const appleTouch = '<link rel="apple-touch-icon" sizes="180x180" href="./src/node_modules/assets/images/favicon/apple-touch-icon.png">'
-  // const icon32 = '<link rel="icon" type="image/png" sizes="32x32" href="./src/node_modules/assets/images/favicon/favicon-32x32.png">'
-  // const icon16 = '<link rel="icon" type="image/png" sizes="16x16" href="./src/node_modules/assets/images/favicon/favicon-16x16.png">'
-  // const webmanifest = '<link rel="manifest" href="./src/node_modules/assets/images/favicon/site.webmanifest"></link>'
-  const font = 'https://fonts.googleapis.com/css?family=Nunito:300,400,700,900|Slackey&display=swap'
-  const loadFont = `<link href=${font} rel='stylesheet' type='text/css'>`
-  html.setAttribute('lang', 'en')
-  meta.setAttribute('name', 'viewport')
-  meta.setAttribute('content', 'width=device-width,initial-scale=1.0')
-  // @TODO: use font api and cache to avoid re-downloading the font data every time
-  document.head.append(meta)
-  document.head.innerHTML += appleTouch + loadFont // + icon16 + icon32 + webmanifest
-  document.adoptedStyleSheets = [sheet]
-  await document.fonts.ready // @TODO: investigate why there is a FOUC
-}
-/******************************************************************************
-  PAGE BOOT
-******************************************************************************/
-async function boot (opts) {
-  // ----------------------------------------
-  // ID + JSON STATE
-  // ----------------------------------------
-  const on = {
-    theme: inject
-  }
-  const subs = await sdb.watch(onbatch)
-  console.log(subs)
-  // const status = {}
-  // ----------------------------------------
-  // TEMPLATE
-  // ----------------------------------------
-  const el = document.body
-  const shopts = { mode: 'closed' }
-  const shadow = el.attachShadow(shopts)
-  shadow.adoptedStyleSheets = [sheet]
-  // ----------------------------------------
-  // ELEMENTS
-  // ----------------------------------------
-  // desktop
-  shadow.append(await app(subs[1]))
-
-  // ----------------------------------------
-  // INIT
-  // ----------------------------------------
-
-  function onbatch (batch) {
-    for (const { type, data } of batch) {
-      on[type] && on[type](data)
-    }
-  }
-}
-async function inject (data) {
-  sheet.replaceSync(data.join('\n'))
-}
-}).call(this)}).call(this,"/src/node_modules/action_bar/page.js")
-},{"./action.js":2,"STATE":1}],5:[function(require,module,exports){
+},{"STATE":2,"icons":6,"search_bar":8}],4:[function(require,module,exports){
+module.exports = () => {
+    const div = document.createElement('div')
+      div.innerHTML = `<h1>Chat-History</h1>`
+      div.id = 'chat_history'
+    return div
+  };
+},{}],5:[function(require,module,exports){
+module.exports = () => {
+    const div = document.createElement('div');
+      div.innerHTML = `<h1>Graph-Explorer</h1>`;
+      div.id = 'graph_explorer'
+    return div;
+  };
+},{}],6:[function(require,module,exports){
 module.exports = {
   terminal,
   wand,
@@ -1169,7 +1052,7 @@ function crumb() {
   return container.outerHTML
 }
 
-},{}],6:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 /******************************************************************************
   LOCALDB COMPONENT
 ******************************************************************************/
@@ -1267,9 +1150,9 @@ function localdb () {
     return target_key && JSON.parse(localStorage[target_key])
   } 
 }
-},{}],7:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 (function (__filename){(function (){
-const STATE = require('STATE') // Adjust path as needed
+const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, subs: [get] } = statedb(fallback_module)
 function fallback_module () {
@@ -1374,7 +1257,7 @@ async function search_bar (opts) {
   const reset_button = shadow.querySelector('.search-reset-button')
   let barmode = ''
   const subs = await sdb.watch(onbatch)
-  console.log(subs)
+  console.log(`search bar subs: ${subs}`)
 
   async function onbatch (batch) {
     for (const { type, data } of batch) {
@@ -1436,4 +1319,478 @@ async function search_bar (opts) {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/search_bar/index.js")
-},{"STATE":1,"icons":5}]},{},[3]);
+},{"STATE":2,"icons":6}],9:[function(require,module,exports){
+module.exports = () => {
+    const div = document.createElement('div');
+      div.innerHTML = `<h1>Tabbed-Editor</h1>`;
+      div.id = 'tabbed_editor';
+    return div;
+  };
+},{}],10:[function(require,module,exports){
+patch_cache_in_browser(arguments[4], arguments[5])
+
+function patch_cache_in_browser (source_cache, module_cache) {
+  const meta = { modulepath: ['page'], paths: {} }
+  for (const key of Object.keys(source_cache)) {
+    const [module, names] = source_cache[key]
+    const dependencies = names || {}
+    source_cache[key][0] = patch(module, dependencies, meta)
+  }
+  function patch (module, dependencies, meta) {
+    const MAP = {}
+    for (const [name, number] of Object.entries(dependencies)) MAP[name] = number
+    return (...args) => {
+      const original = args[0]
+      require.cache = module_cache
+      require.resolve = resolve
+      args[0] = require
+      return module(...args)
+      function require (name) {
+        const identifier = resolve(name)
+        if (name.endsWith('node_modules/STATE')) {
+          const modulepath = meta.modulepath.join('/')
+          const original_export = require.cache[identifier] || (require.cache[identifier] = original(name))
+          const exports = (...args) => original_export(...args, modulepath)
+          return exports
+        } else if (require.cache[identifier]) return require.cache[identifier]
+        else {
+          const counter = meta.modulepath.concat(name).join('/')
+          if (!meta.paths[counter]) meta.paths[counter] = 0
+          const localid = `${name}${meta.paths[counter] ? '#' + meta.paths[counter] : ''}`
+          meta.paths[counter]++
+          meta.modulepath.push(localid)
+        }
+        const exports = require.cache[identifier] = original(name)
+        if (!name.endsWith('node_modules/STATE')) meta.modulepath.pop(name)
+        return exports
+      }
+    }
+    function resolve (name) { return MAP[name] }
+  }
+}
+require('./page') // or whatever is otherwise the main entry of our project
+
+},{"./page":12}],11:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('../src/node_modules/STATE')
+const statedb = STATE(__filename)
+const { sdb, subs: [get] } = statedb(fallback_module)
+function fallback_module (){
+  return {
+    api: fallback_instance,
+    _: {}
+  }
+  function fallback_instance () {
+    return {
+      _: {},
+      drive: {
+        style: {
+          'theme.css': {
+            raw: `
+            .nav-bar-container {
+              position: sticky;
+              top: 0;
+              z-index: 100;
+              background-color: #e0e0e0;
+            }
+  
+            .nav-bar {
+              display: flex;
+              justify-content: center;
+              align-items: center;
+              padding: 10px 20px;
+              background-color: #e0e0e0;
+              border-bottom: 2px solid #333;
+            }
+  
+            .menu-toggle-button {
+              padding: 10px;
+              background-color: #e0e0e0;
+              border: none;
+              cursor: pointer;
+              border-radius: 5px;
+            }
+  
+            .menu.hidden {
+              display: none;
+            }
+  
+            .menu {
+              display: block;
+              position: absolute;
+              top: 100%;
+              left: 50%;
+              transform: translateX(-50%);
+              width: 200px;
+              background-color: #f0f0f0;
+              padding: 10px;
+              border-radius: 0 0 5px 5px;
+              box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            }
+  
+            .menu-header {
+              margin-bottom: 10px;
+              text-align: center;
+            }
+  
+            .unselect-all-button {
+              padding: 8px 12px;
+              border: none;
+              background-color: #d0d0d0;
+              cursor: pointer;
+              border-radius: 5px;
+              width: 100%;
+            }
+  
+            .menu-list {
+              list-style: none;
+              padding: 0;
+              margin: 0;
+              max-height: 400px;
+              overflow-y: auto;
+              background-color: #f0f0f0;
+            }
+  
+            .menu-list::-webkit-scrollbar {
+              width: 0;
+              background: transparent;
+            }
+  
+            .menu-list::-webkit-scrollbar-thumb {
+              background: transparent;
+            }
+  
+            .menu-item {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 8px 0;
+              border-bottom: 1px solid #ccc;
+              cursor: pointer;
+            }
+  
+            .menu-item:last-child {
+              border-bottom: none;
+            }
+  
+            .component-container {
+              flex-grow: 1;
+              padding-top: 20px + 50px;
+              padding-left: 20px;
+              padding-right: 20px;
+              padding-bottom: 20px;
+            }
+  
+            .components-wrapper {
+              width: 95%;
+              margin: 0 auto;
+              padding: 2.5%;
+            }
+  
+            .component-outer-wrapper {
+              margin-bottom: 20px;
+              padding: 0px 0px 10px 0px;
+            }
+  
+            .component-name-label {
+              background-color:transparent;
+              padding: 8px 15px;
+              text-align: center;
+              font-weight: bold;
+            }
+  
+            .component-wrapper {
+              padding: 15px;
+              border:3px solid #666;
+              resize:both;
+              overflow: auto;
+              border-radius: 0px;
+              background-color:#ffffff;
+            }
+  
+            .component-wrapper:last-child {
+              margin-bottom: 0;
+            }`
+          }
+        }
+      }
+    }
+  }
+}
+module.exports = create_component_menu
+async function create_component_menu (opts, imports) {
+  const { id, sdb } = await get(opts.sid)
+  const on = {
+    style: inject
+  }
+  const el = document.createElement('div')
+  const shadow = el.attachShadow({ mode: 'closed' })
+  shadow.innerHTML = `
+  <div class="nav-bar-container">
+    <div class="nav-bar">
+      <button class="menu-toggle-button">☰ MENU</button>
+      <div class="menu hidden">
+        <div class="menu-header">
+          <button class="unselect-all-button">Unselect All</button>
+        </div>
+        <ul class="menu-list"></ul>
+      </div>
+    </div>
+  </div>
+  <div class="components-wrapper"></div>`
+  // styling
+  document.body.style.margin = 0
+  const sheet = new CSSStyleSheet()
+  shadow.adoptedStyleSheets = [sheet]
+  // refering to template
+  const list = shadow.querySelector('.menu-list')
+  const wrapper = shadow.querySelector('.components-wrapper')
+  const menu = shadow.querySelector('.menu')
+  const toggle_btn = shadow.querySelector('.menu-toggle-button')
+  const unselect_btn = shadow.querySelector('.unselect-all-button')
+  // helper variables
+  const entries = Object.entries(imports)
+  const checkboxes = []
+  const wrappers = []
+  const names = []
+  const url_params = new URLSearchParams(window.location.search)
+  const checked_param = url_params.get('checked')
+  let initial_checked = []
+  const selected_name = url_params.get('selected')
+  let current_wrapper = null
+  // events
+  if (checked_param) {
+    try {
+      initial_checked = JSON.parse(checked_param)
+      if (!Array.isArray(initial_checked)) initial_checked = []
+    } catch (e) {
+      console.error('Error parsing checked parameter:', e)
+      initial_checked = []
+    }
+  }
+
+  entries.forEach(create_list)
+
+  unselect_btn.onclick = on_unselect
+  toggle_btn.onclick = on_menu_toggle
+  document.onclick = on_doc_click
+  window.onload = scroll_to_selected
+  const subs = await sdb.watch(onbatch)
+  return el
+
+  async function create_list ([name, factory], index) {
+    const checked = initial_checked.includes(index + 1) || initial_checked.length === 0  
+    // Menu List
+    const menu_item = document.createElement('li')
+    menu_item.className = 'menu-item'
+    menu_item.innerHTML = `
+    <span>${name}</span>
+    <input type="checkbox" ${checked ? 'checked' : ''}>`
+    const label = menu_item.querySelector('span')
+    const checkbox = menu_item.querySelector('input')
+  
+    list.append(menu_item)
+    checkboxes.push(checkbox)
+    names.push(name)
+
+    // Actual Component
+    const outer = document.createElement('div')
+    outer.className = 'component-outer-wrapper'
+    outer.style.display = checked ? 'block' : 'none'
+    outer.innerHTML = `
+    <div class="component-name-label">${name}</div>
+    <div class="component-wrapper"></div>`
+    wrappers.push(outer)
+    const inner = outer.querySelector('.component-wrapper')
+    inner.append(await factory())
+    wrapper.append(outer)
+    // event
+    checkbox.onchange = on_checkbox
+    label.onclick = on_label
+
+    function on_checkbox (e) {
+      outer.style.display = e.target.checked ? 'block' : 'none'
+      update_url(checkboxes)
+    }
+  
+    function on_label () {
+      inner.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      update_url(checkboxes, name)
+      if (current_wrapper && current_wrapper !== outer) {
+        current_wrapper.style.backgroundColor = ''
+      }
+      outer.style.backgroundColor = 'lightblue'
+      current_wrapper = outer
+    }
+  }
+
+  function on_unselect () {
+    if (unselect_btn.textContent === 'Unselect All') {
+      checkboxes.forEach(c => c.checked = false)
+      wrappers.forEach(w => w.style.display = 'none')
+      unselect_btn.textContent = 'Select All'
+    } else {
+      checkboxes.forEach(c => c.checked = true)
+      wrappers.forEach(w => w.style.display = 'block')
+      unselect_btn.textContent = 'Unselect All'
+    }
+    update_url(checkboxes)
+    if (current_wrapper) {
+      current_wrapper.style.backgroundColor = ''
+      current_wrapper = null
+    }
+  }
+
+  function on_menu_toggle (e) {
+    e.stopPropagation()
+    menu.classList.toggle('hidden')
+  }
+
+  function on_doc_click (e) {
+    if (!menu.classList.contains('hidden') && !menu.contains(e.target) && !toggle_btn.contains(e.target)) {
+      menu.classList.add('hidden')
+    }
+  }
+
+  function scroll_to_selected () {
+    if (selected_name) {
+      const i = names.indexOf(selected_name)
+      if (i !== -1) {
+        const w = wrappers[i]
+        w.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        w.style.backgroundColor = 'lightblue'
+        current_wrapper = w
+      }
+    }
+  }
+
+  function update_url (checkboxes, selected) {
+    const checked = checkboxes.reduce((acc, c, i) => {
+      if (c.checked) acc.push(i + 1)
+      return acc
+    }, [])
+
+    const params = new URLSearchParams(window.location.search)
+    if (checked.length > 0 && checked.length < checkboxes.length) {
+      params.set('checked', `[${checked.join(',')}]`)
+    } else {
+      params.delete('checked')
+    }
+
+    if (selected) {
+      params.set('selected', selected)
+    } else {
+      params.delete('selected')
+    }
+
+    window.history.pushState(null, '', `${window.location.pathname}?${params}`)
+  }
+
+  function onbatch (batch) {
+    for (const { type, data } of batch) {
+      on[type] && on[type](data)
+    }
+  }
+
+  async function inject (data) {
+    sheet.replaceSync(data.join('\n'))
+  }
+}
+
+}).call(this)}).call(this,"/web/index.js")
+},{"../src/node_modules/STATE":2}],12:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('../src/node_modules/STATE')
+const statedb = STATE(__filename)
+const { sdb, subs: [get] } = statedb(fallback_module)
+function fallback_module () {
+  return {
+    _: {
+      app: {
+        $: '',
+        0: override_app
+      }
+    },
+    drive: {
+      theme: {
+        'style.css': {
+          raw: 'body { font-family: \'system-ui\'; }'
+        }
+      }
+    }
+  }
+
+  function override_app ([app]) {
+    const data = app()
+    return data
+  }
+}
+
+/******************************************************************************
+  PAGE
+******************************************************************************/
+const components = require('..')
+const app = require('./index')
+const sheet = new CSSStyleSheet()
+config().then(() => boot({ sid: '' }))
+
+async function config () {
+  // const path = path => new URL(`../src/node_modules/${path}`, `file://${__dirname}`).href.slice(8)
+  const html = document.documentElement
+  const meta = document.createElement('meta')
+  const appleTouch = '<link rel="apple-touch-icon" sizes="180x180" href="./src/node_modules/assets/images/favicon/apple-touch-icon.png">'
+  // const icon32 = '<link rel="icon" type="image/png" sizes="32x32" href="./src/node_modules/assets/images/favicon/favicon-32x32.png">'
+  // const icon16 = '<link rel="icon" type="image/png" sizes="16x16" href="./src/node_modules/assets/images/favicon/favicon-16x16.png">'
+  // const webmanifest = '<link rel="manifest" href="./src/node_modules/assets/images/favicon/site.webmanifest"></link>'
+  const font = 'https://fonts.googleapis.com/css?family=Nunito:300,400,700,900|Slackey&display=swap'
+  const loadFont = `<link href=${font} rel='stylesheet' type='text/css'>`
+  html.setAttribute('lang', 'en')
+  meta.setAttribute('name', 'viewport')
+  meta.setAttribute('content', 'width=device-width,initial-scale=1.0')
+  // @TODO: use font api and cache to avoid re-downloading the font data every time
+  document.head.append(meta)
+  document.head.innerHTML += appleTouch + loadFont // + icon16 + icon32 + webmanifest
+  document.adoptedStyleSheets = [sheet]
+  await document.fonts.ready // @TODO: investigate why there is a FOUC
+}
+/******************************************************************************
+  PAGE BOOT
+******************************************************************************/
+async function boot (opts) {
+  // ----------------------------------------
+  // ID + JSON STATE
+  // ----------------------------------------
+  const on = {
+    theme: inject
+  }
+  const subs = await sdb.watch(onbatch)
+  // const status = {}
+  // ----------------------------------------
+  // TEMPLATE
+  // ----------------------------------------
+  const el = document.body
+  const shopts = { mode: 'closed' }
+  const shadow = el.attachShadow(shopts)
+  shadow.adoptedStyleSheets = [sheet]
+  // ----------------------------------------
+  // ELEMENTS
+  // ----------------------------------------
+  // desktop
+  console.log(subs)
+  shadow.append(await app(subs[1], components))
+
+  // ----------------------------------------
+  // INIT
+  // ----------------------------------------
+  function onbatch (batch) {
+    for (const { type, data } of batch) {
+      on[type] && on[type](data)
+    }
+  }
+  async function inject (data) {
+    sheet.replaceSync(data.join('\n'))
+  }
+}
+
+}).call(this)}).call(this,"/web/page.js")
+},{"..":1,"../src/node_modules/STATE":2,"./index":11}]},{},[10]);
