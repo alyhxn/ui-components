@@ -781,7 +781,7 @@ async function make_input_map (inputs) {
 module.exports = STATE
 },{"localdb":7}],3:[function(require,module,exports){
 (function (__filename){(function (){
-const STATE = require('STATE')
+const STATE = require('../../node_modules/STATE')
 const statedb = STATE(__filename)
 const { sdb, subs: [get] } = statedb(fallback_module)
 function fallback_module () {
@@ -902,7 +902,7 @@ async function action_bar (opts) {
 }
 
 }).call(this)}).call(this,"/src/node_modules/action_bar/action.js")
-},{"STATE":2,"icons":6,"search_bar":8}],4:[function(require,module,exports){
+},{"../../node_modules/STATE":2,"icons":6,"search_bar":8}],4:[function(require,module,exports){
 module.exports = () => {
     const div = document.createElement('div')
       div.innerHTML = `<h1>Chat-History</h1>`
@@ -1152,7 +1152,7 @@ function localdb () {
 }
 },{}],8:[function(require,module,exports){
 (function (__filename){(function (){
-const STATE = require('STATE')
+const STATE = require('../../node_modules/STATE')
 const statedb = STATE(__filename)
 const { sdb, subs: [get] } = statedb(fallback_module)
 function fallback_module () {
@@ -1319,7 +1319,7 @@ async function search_bar (opts) {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/search_bar/index.js")
-},{"STATE":2,"icons":6}],9:[function(require,module,exports){
+},{"../../node_modules/STATE":2,"icons":6}],9:[function(require,module,exports){
 module.exports = () => {
     const div = document.createElement('div');
       div.innerHTML = `<h1>Tabbed-Editor</h1>`;
