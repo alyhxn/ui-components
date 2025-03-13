@@ -1,29 +1,6 @@
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
 const { sdb, subs: [get] } = statedb(fallback_module)
-function fallback_module () {
-  return {
-    _: {
-      app: {
-        $: '',
-        0: override_app
-      }
-    },
-    drive: {
-      theme: {
-        'style.css': {
-          raw: 'body { font-family: \'system-ui\'; }'
-        }
-      }
-    }
-  }
-
-  function override_app ([app]) {
-    const data = app()
-    return data
-  }
-}
-
 /******************************************************************************
   PAGE
 ******************************************************************************/
@@ -87,5 +64,27 @@ async function boot (opts) {
   }
   async function inject (data) {
     sheet.replaceSync(data.join('\n'))
+  }
+}
+function fallback_module () {
+  return {
+    _: {
+      app: {
+        $: '',
+        0: override_app
+      }
+    },
+    drive: {
+      theme: {
+        'style.css': {
+          raw: 'body { font-family: \'system-ui\'; }'
+        }
+      }
+    }
+  }
+
+  function override_app ([app]) {
+    const data = app()
+    return data
   }
 }
