@@ -27,8 +27,8 @@ function fallback_module () {
 /******************************************************************************
   PAGE
 ******************************************************************************/
-const components = require('..')
-const app = require('./index')
+const components = require('../src/index')
+const app = require('./menu')
 const sheet = new CSSStyleSheet()
 config().then(() => boot({ sid: '' }))
 
