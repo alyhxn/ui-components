@@ -4,8 +4,7 @@ const { sdb, subs: [get] } = statedb(fallback_module)
 /******************************************************************************
   PAGE
 ******************************************************************************/
-const components = require('../src/index')
-const app = require('./menu')
+const app = require('../src/node_modules/app')
 const sheet = new CSSStyleSheet()
 config().then(() => boot({ sid: '' }))
 
@@ -51,8 +50,7 @@ async function boot (opts) {
   // ELEMENTS
   // ----------------------------------------
   // desktop
-  console.log(subs)
-  shadow.append(await app(subs[1], components))
+  shadow.append(await app(subs[1]))
 
   // ----------------------------------------
   // INIT
@@ -62,9 +60,9 @@ async function boot (opts) {
       on[type] && on[type](data)
     }
   }
-  async function inject (data) {
-    sheet.replaceSync(data.join('\n'))
-  }
+}
+async function inject (data) {
+  sheet.replaceSync(data.join('\n'))
 }
 function fallback_module () {
   return {
