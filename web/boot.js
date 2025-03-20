@@ -18,7 +18,7 @@ function patch_cache_in_browser (source_cache, module_cache) {
       return module(...args)
       function require (name) {
         const identifier = resolve(name)
-        if (name.endsWith('node_modules/STATE')) {
+        if (name.endsWith('STATE')) {
           const modulepath = meta.modulepath.join('/')
           const original_export = require.cache[identifier] || (require.cache[identifier] = original(name))
           const exports = (...args) => original_export(...args, modulepath)

@@ -8,10 +8,18 @@ const search_bar = require('search_bar')
 const graph_explorer = require('graph_explorer')
 const chat_history = require('chat_history')
 const tabbed_editor = require('tabbed_editor')
+
 async function create_component_menu (opts) {
   const { id, sdb } = await get(opts.sid)
   const on = {
     style: inject
+  }
+  const imports = {
+    action_bar: action_bar,
+    search_bar: search_bar,
+    graph_explorer: graph_explorer,
+    chat_history: chat_history,
+    tabbed_editor: tabbed_editor
   }
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
@@ -92,7 +100,8 @@ async function create_component_menu (opts) {
     <div class="component-wrapper"></div>`
     wrappers.push(outer)
     const inner = outer.querySelector('.component-wrapper')
-    inner.append(await factory())
+    inner.append(await factory(subs[index]))
+    console.log(index)
     wrapper.append(outer)
     // event
     checkbox.onchange = on_checkbox
