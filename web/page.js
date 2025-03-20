@@ -4,7 +4,7 @@ const { sdb, subs: [get] } = statedb(fallback_module)
 /******************************************************************************
   PAGE
 ******************************************************************************/
-const app = require('../src/node_modules/app')
+const app = require('../src/menu')
 const sheet = new CSSStyleSheet()
 config().then(() => boot({ sid: '' }))
 
@@ -67,7 +67,7 @@ async function inject (data) {
 function fallback_module () {
   return {
     _: {
-      app: {
+      menu: {
         $: '',
         0: override_app
       }

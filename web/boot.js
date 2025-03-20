@@ -18,7 +18,7 @@ function patch_cache_in_browser (source_cache, module_cache) {
       return module(...args)
       function require (name) {
         const identifier = resolve(name)
-        if (name.endsWith('STATE')) {
+        if (name.endsWith('node_modules/STATE')) {
           const modulepath = meta.modulepath.join('/')
           const original_export = require.cache[identifier] || (require.cache[identifier] = original(name))
           const exports = (...args) => original_export(...args, modulepath)
@@ -27,12 +27,12 @@ function patch_cache_in_browser (source_cache, module_cache) {
         else {
           const counter = meta.modulepath.concat(name).join('/')
           if (!meta.paths[counter]) meta.paths[counter] = 0
-          const localid = `${name}${meta.paths[counter] ? '#' + meta.paths[counter] : ''}`
+          let localid = `${name}${meta.paths[counter] ? '#' + meta.paths[counter] : ''}`
           meta.paths[counter]++
-          meta.modulepath.push(localid)
+          meta.modulepath.push(localid.replace(/^\.\/+/, '').replace('/', ','))
         }
         const exports = require.cache[identifier] = original(name)
-        if (!name.endsWith('STATE')) meta.modulepath.pop(name)
+        if (!name.endsWith('node_modules/STATE')) meta.modulepath.pop(name)
         return exports
       }
     }
