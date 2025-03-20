@@ -4,11 +4,11 @@ const { sdb, subs: [get] } = statedb(fallback_module)
 
 module.exports = create_component_menu
 const action_bar = require('action_bar')
+delete require.cache[require.resolve('search_bar')]
 const search_bar = require('search_bar')
 const graph_explorer = require('graph_explorer')
 const chat_history = require('chat_history')
 const tabbed_editor = require('tabbed_editor')
-
 async function create_component_menu (opts) {
   const { id, sdb } = await get(opts.sid)
   const on = {
@@ -66,14 +66,14 @@ async function create_component_menu (opts) {
       initial_checked = []
     }
   }
-
+  const subs = await sdb.watch(onbatch)
   entries.forEach(create_list)
 
   unselect_btn.onclick = on_unselect
   toggle_btn.onclick = on_menu_toggle
   document.onclick = on_doc_click
   window.onload = scroll_to_selected
-  const subs = await sdb.watch(onbatch)
+
   return el
 
   async function create_list ([name, factory], index) {
