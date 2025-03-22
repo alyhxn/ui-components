@@ -67,7 +67,7 @@ async function inject (data) {
 function fallback_module () {
   return {
     _: {
-      'index': {
+      './index': {
         $: '',
         0: override_app
       }

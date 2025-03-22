@@ -2,8 +2,6 @@ const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
 const { sdb, subs: [get] } = statedb(fallback_module)
 module.exports = create_component_menu
-delete require.cache[require.resolve('search_bar')]
-delete require.cache[require.resolve('action_bar')]
 const graph_explorer = require('../src/node_modules/graph_explorer')
 const chat_history = require('../src/node_modules/chat_history')
 const tabbed_editor = require('../src/node_modules/tabbed_editor')
