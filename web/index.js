@@ -1,25 +1,21 @@
-const STATE = require('STATE')
+const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
 const { sdb, subs: [get] } = statedb(fallback_module)
-
 module.exports = create_component_menu
-const action_bar = require('action_bar')
 delete require.cache[require.resolve('search_bar')]
-const search_bar = require('search_bar')
-const graph_explorer = require('graph_explorer')
-const chat_history = require('chat_history')
-const tabbed_editor = require('tabbed_editor')
+delete require.cache[require.resolve('action_bar')]
+const graph_explorer = require('../src/node_modules/graph_explorer')
+const chat_history = require('../src/node_modules/chat_history')
+const tabbed_editor = require('../src/node_modules/tabbed_editor')
 async function create_component_menu (opts) {
   const { id, sdb } = await get(opts.sid)
   const on = {
     style: inject
   }
   const imports = {
-    action_bar: action_bar,
-    search_bar: search_bar,
-    graph_explorer: graph_explorer,
-    chat_history: chat_history,
-    tabbed_editor: tabbed_editor
+    graph_explorer,
+    chat_history,
+    tabbed_editor
   }
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
@@ -199,12 +195,6 @@ function fallback_module () {
   return {
     api: fallback_instance,
     _: {
-      action_bar: {
-        $: '',
-      },
-      search_bar: {
-        $: '',
-      },
       graph_explorer: {
         $: '',
       },
@@ -219,12 +209,6 @@ function fallback_module () {
   function fallback_instance () {
     return {
       _: {
-        action_bar: {
-          0: ""
-        },
-        search_bar: {
-          0: ""
-        },
         graph_explorer: {
           0: ""
         },
