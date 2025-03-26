@@ -83,8 +83,7 @@ function STATE (address, modulepath) {
     }
   }
   function append_tree_node (id, status) {
-    const [super_id, name] = id.split(/\/(?=[^\/]*$)/)
-  
+    const [super_id, name] = id.split(/>(?=[^>]*$)/)
     if(name){
       if(status.tree_pointers[super_id]){
         status.tree_pointers[super_id]._[name] = { $: { _: {} } }
@@ -96,7 +95,7 @@ function STATE (address, modulepath) {
         let new_super_id = super_id
         
         while(!status.tree_pointers[new_super_id]){
-          [new_super_id, temp_name] = new_super_id.split(/\/(?=[^\/]*$)/)
+          [new_super_id, temp_name] = new_super_id.split(/>(?=[^>]*$)/)
           new_name = temp_name + '.' + new_name
         }
         status.tree_pointers[new_super_id]._[new_name] = { $: { _: {} } }
@@ -216,16 +215,16 @@ function STATE (address, modulepath) {
     }
   }
   function find_super ({ xtype, fallback, fun_status, local_status }) {
-    let modulepath_super = modulepath.split(/\/(?=[^\/]*$)/)[0]
-    let modulepath_grand = modulepath_super.split(/\/(?=[^\/]*$)/)[0]
-    const split = modulepath.split('/')
+    let modulepath_super = modulepath.split(/\>(?=[^>]*$)/)[0]
+    let modulepath_grand = modulepath_super.split(/\>(?=[^>]*$)/)[0]
+    const split = modulepath.split('>')
     const name = split.at(-2) + '.' + split.at(-1)
     let data
     const entries = {}
     if(xtype === 'module'){
       while(!data){
         data = db.read(['state', modulepath_super])
-        modulepath_grand = modulepath_super = modulepath_super.split(/\/(?=[^\/]*$)/)[0]
+        modulepath_grand = modulepath_super = modulepath_super.split(/\>(?=[^>]*$)/)[0]
       }
       data.path = data.id = modulepath
       local_status.name = name
@@ -247,19 +246,19 @@ function STATE (address, modulepath) {
       while(!data && temp !== modulepath_super){
         data = db.read(['state', instance_path_super])
         temp = modulepath_super
-        modulepath_grand = modulepath_super = modulepath_super.split(/\/(?=[^\/]*$)/)[0]
+        modulepath_grand = modulepath_super = modulepath_super.split(/\>(?=[^>]*$)/)[0]
         instance_path_super = modulepath_super + ':0'
       }
       data.path = data.id = get_instance_path(modulepath)
       temp = null
       let super_data
-      let instance_path_grand = modulepath_grand.includes('/') ? modulepath_grand + ':0' : modulepath_grand
+      let instance_path_grand = modulepath_grand.includes('>') ? modulepath_grand + ':0' : modulepath_grand
 
       while(!super_data?.subs && temp !== modulepath_grand){
         super_data = db.read(['state', instance_path_grand])
         temp = modulepath_grand
-        modulepath_grand = modulepath_grand.split(/\/(?=[^\/]*$)/)[0]
-        instance_path_grand = modulepath_grand.includes('/') ? modulepath_grand + ':0' : modulepath_grand
+        modulepath_grand = modulepath_grand.split(/\>(?=[^>]*$)/)[0]
+        instance_path_grand = modulepath_grand.includes('>') ? modulepath_grand + ':0' : modulepath_grand
       }
       
       super_data.subs.forEach((sub_id, i) => {
@@ -324,14 +323,14 @@ function STATE (address, modulepath) {
         entry.hubs = [hub_entry.id]
         if (xtype === 'instance') {
           let temp_path = path.split(':')[0]
-          temp_path = temp_path ? temp_path + '/' : temp_path
+          temp_path = temp_path ? temp_path + '>' : temp_path
           const module_id = temp_path + local_id
           entry.type = module_id
           path = module_id + ':' + (status.modulepaths[module_id]++ || 0)
         }
         else {
           entry.type = local_id
-          path = path ? path + '/' : ''
+          path = path ? path + '>' : ''
           path = path + local_id
         }
       } 
@@ -561,8 +560,11 @@ async function register_imports (id, address) {
 function verify_imports () {
   Object.entries(status.imports).some(([id, imports]) => {
    const data = status.local_statuses[id].fallback_module()
-    if(!data._)
-      return
+    if(!data._){
+      if(imports.length > 1)
+        throw new Error('No sub-nodes found for required modules in the fallback of '+status.local_statuses[id].module_id)
+      else return
+    }
     const fallback_imports = Object.keys(data._)
 
     imports.forEach(imp => {
@@ -570,7 +572,7 @@ function verify_imports () {
       if(imp.includes('STATE'))
         return
       fallback_imports.forEach(fallimp => {
-        if(imp.includes(fallimp))
+        if(imp === fallimp)
           check = false
       })
 
@@ -581,7 +583,7 @@ function verify_imports () {
     fallback_imports.forEach(fallimp => {
       let check = true
       imports.forEach(imp => {
-        if(imp.includes(fallimp))
+        if(imp === fallimp)
           check = false
       })
       
@@ -607,7 +609,7 @@ function register_overrides ({overrides, ...args}) {
   function recurse ({ tree, path = '', id, xtype = 'instance', local_modulepaths = {} }) {
 
     tree._ && Object.entries(tree._).forEach(([type, instances]) => {
-      const sub_path = path + '/' + type.replace('.', '/')
+      const sub_path = path + '>' + type.replace('.', '>')
       Object.entries(instances).forEach(([id, override]) => {
         if(typeof(override) === 'function'){
           let resultant_path = id === '$' ? sub_path : sub_path + ':' + id
@@ -637,7 +639,7 @@ function get_fallbacks ({ fallback, modulename, modulepath, instance_path }) {
 
     function merge_trees (data, path) {
       if (data._) {
-        Object.entries(data._).forEach(([type, data]) => merge_trees(data, path + '/' + type.split('$')[0].replace('.', '/')))
+        Object.entries(data._).forEach(([type, data]) => merge_trees(data, path + '>' + type.split('$')[0].replace('.', '>')))
       } else {
         data.$ = { _: status.tree_pointers[path]._ }
       }
@@ -844,7 +846,126 @@ async function make_input_map (inputs) {
 
 
 module.exports = STATE
-},{"localdb":4}],2:[function(require,module,exports){
+},{"localdb":5}],2:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { sdb, subs: [get] } = statedb(fallback_module)
+
+const search_bar = require('search_bar')
+
+module.exports = action_bar
+
+async function action_bar (opts = '') {
+  const { id, sdb } = await get(opts.sid)
+  const on = {
+    style: inject
+  }
+  const el = document.createElement('div')
+  const shadow = el.attachShadow({ mode: 'closed' })
+  shadow.innerHTML = `
+  <div class="action-bar-container">
+    <div class="action-bar-content">
+      <button class="icon-button">
+      </button>
+      <div class="separator"></div>
+      <button class="icon-button">
+      </button>
+      <div class="separator"></div>
+      <searchbar></searchbar>
+      <button class="icon-button">
+      </button>
+    </div>
+  </div>`
+  const subs = await sdb.watch(onbatch)
+  console.log(`actionbar subs: `, subs)
+  search_bar(subs[0]).then(el => shadow.querySelector('searchbar').replaceWith(el))
+
+  // to add a click event listener to the buttons:
+  // const [btn1, btn2, btn3] = shadow.querySelectorAll('button')
+  // btn1.addEventListener('click', () => { console.log('Terminal button clicked') })
+
+  return el
+  function onbatch (batch) {
+    for (const { type, data } of batch) {
+      on[type] && on[type](data)
+    }
+  }
+  function inject(data) {
+    const sheet = new CSSStyleSheet()
+    sheet.replaceSync(data)
+    shadow.adoptedStyleSheets = [sheet]
+  }
+}
+function fallback_module () {
+  return {
+    api: fallback_instance,
+    _: {
+      search_bar: {
+        $: ([app]) => app()
+      }
+    }
+  }
+  function fallback_instance () {
+    return {
+      _: {
+        search_bar: {
+          0: ''
+        }
+      },
+      drive: {
+        style: {
+          'theme.css': {
+            raw: `
+              .action-bar-container {
+                  display: flex;
+                  align-items: center;
+                  background-color: #212121;
+                  padding: 0.5rem;
+                  // min-width: 456px
+              }
+
+              .action-bar-content {
+                  display: flex;
+                  align-items: center;
+                  gap: 0.5rem;
+                  flex:1;
+              }
+
+              .icon-button {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0;
+                border: none;
+                background-color: transparent;
+                cursor: pointer;
+              }
+
+
+              .separator {
+                  width: 1px;
+                  height: 24px;
+                  background-color: #424242;
+              }
+
+              .search-bar-container {
+                flex: 1;
+                position: relative;
+              }
+              svg {
+                display: block;
+                margin: auto;
+              }
+            `
+          }
+        }
+      }
+    }
+  }
+}
+}).call(this)}).call(this,"/src/node_modules/action_bar.js")
+},{"STATE":1,"search_bar":6}],3:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -906,7 +1027,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/chat_history.js")
-},{"STATE":1}],3:[function(require,module,exports){
+},{"STATE":1}],4:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -968,7 +1089,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/graph_explorer.js")
-},{"STATE":1}],4:[function(require,module,exports){
+},{"STATE":1}],5:[function(require,module,exports){
 /******************************************************************************
   LOCALDB COMPONENT
 ******************************************************************************/
@@ -1066,7 +1187,174 @@ function localdb () {
     return target_key && JSON.parse(localStorage[target_key])
   } 
 }
-},{}],5:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { sdb, subs: [get] } = statedb(fallback_module)
+
+// const { search, close } = require('icons')
+module.exports = search_bar
+async function search_bar (opts = '') {
+  const { id, sdb } = await get(opts.sid)
+  const on = {
+    style: inject
+  }
+  const el = document.createElement('div')
+  el.className = 'search-bar-container'
+  const shadow = el.attachShadow({ mode: 'closed' })
+  const sheet = new CSSStyleSheet()
+  shadow.innerHTML = `
+  <div class="search-input-container">
+    <div class="search-input-content">
+      <div class="search-input-text"></div>
+      <input type="text" class="search-input" style="display: none;">
+    </div>
+    <button class="search-reset-button"></button>
+  </div>`
+
+  const input_container = shadow.querySelector('.search-input-container')
+  const input_content = shadow.querySelector('.search-input-content')
+  const text_span = shadow.querySelector('.search-input-text')
+  const input_element = shadow.querySelector('.search-input')
+  const reset_button = shadow.querySelector('.search-reset-button')
+  let barmode = ''
+  const subs = await sdb.watch(onbatch)
+  console.log(`search bar subs: ${subs}`)
+
+  async function onbatch (batch) {
+    for (const { type, data } of batch) {
+      on[type] && on[type](data)
+    }
+  }
+  input_container.onclick = on_input_container_click
+  input_element.onblur = on_input_element_blur
+  reset_button.onclick = on_reset_click
+  text_span.onclick = on_span_click
+
+  return el
+  function inject(data) {
+    sheet.replaceSync(data)
+    shadow.adoptedStyleSheets = [sheet]
+  }
+  function show () {
+    input_content.replaceChildren(input_element)
+    input_element.style.display = 'block'
+    input_element.focus()
+    // reset_button.innerHTML = close()
+    barmode = 'already'
+  }
+  function hide () {
+    input_content.replaceChildren(text_span)
+    input_element.style.display = 'none'
+    // reset_button.innerHTML = search()
+  }
+  function on_input_container_click (event) {
+    // console.log('Focus Event:', event)
+    if (barmode === 'already') {
+      return
+    }
+    show()
+  }
+  function on_input_element_blur (event) {
+    // console.log('Blur Event:', event)
+    if (input_element.value === '') {
+      hide()
+    }
+  }
+  function on_span_click (event) {
+    event.stopPropagation()
+    handle_breadcrumb_click(event)
+  }
+  function on_reset_click (event) {
+    event.stopPropagation()
+    handle_reset(event)
+  }
+  function handle_reset (event) {
+    // console.log('Reset Event:', event)
+    input_element.value = ''
+    hide()
+  }
+  function handle_breadcrumb_click (event) {
+    // console.log('Breadcrumb Event:', event)
+    show()
+    input_element.placeholder = '#night'
+  }
+}
+function fallback_module () {
+  return {
+    api: fallback_instance
+  }
+  function fallback_instance () {
+    return {
+      drive: {
+        style: {
+          'theme.css':{
+            raw: `
+              .search-bar-container {
+                flex: 1;
+                position: relative;
+              }
+          
+              .search-input-container {
+                height: 2rem;
+                padding-left: 0.75rem;
+                padding-right: 0.75rem;
+                display: flex;
+                flex-direction: row;
+                align-items: center;
+                justify-content: center;
+                background-color: #303030;
+                border-radius: 0.375rem;
+                cursor: text;
+              }
+              
+              svg {
+                display: block;
+                margin: auto;
+              }
+              
+              .search-input-content {
+                flex: 1;
+              }
+          
+              .search-input-text {
+                font-size: 0.875rem;
+                color: #a0a0a0;
+              }
+          
+              .search-input {
+                width: 100%;
+                background-color: transparent;
+                outline: none;
+                border: none;
+                color: #a0a0a0;
+                font-size: 0.875rem;
+              }
+          
+              .search-reset-button {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                margin-left: 0;
+                padding: 0;
+                border: none;
+                background-color: transparent;
+              }
+          
+              .search-reset-button:hover {
+                cursor: pointer;
+              }
+            `
+          }
+        }
+      }
+    }
+  }
+}
+}).call(this)}).call(this,"/src/node_modules/search_bar.js")
+},{"STATE":1}],7:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1128,7 +1416,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor.js")
-},{"STATE":1}],6:[function(require,module,exports){
+},{"STATE":1}],8:[function(require,module,exports){
 patch_cache_in_browser(arguments[4], arguments[5])
 
 function patch_cache_in_browser (source_cache, module_cache) {
@@ -1150,20 +1438,20 @@ function patch_cache_in_browser (source_cache, module_cache) {
       function require (name) {
         const identifier = resolve(name)
         if (name.endsWith('STATE')) {
-          const modulepath = meta.modulepath.join('/')
+          const modulepath = meta.modulepath.join('>')
           const original_export = require.cache[identifier] || (require.cache[identifier] = original(name))
           const exports = (...args) => original_export(...args, modulepath)
           return exports
         } else if (require.cache[identifier]) return require.cache[identifier]
         else {
-          const counter = meta.modulepath.concat(name).join('/')
+          const counter = meta.modulepath.concat(name).join('>')
           if (!meta.paths[counter]) meta.paths[counter] = 0
           let localid = `${name}${meta.paths[counter] ? '#' + meta.paths[counter] : ''}`
           meta.paths[counter]++
-          meta.modulepath.push(localid.replace(/^\.\/+/, '').replace('/', ','))
+          meta.modulepath.push(localid.replace(/^\.\+/, '').replace('>', ','))
         }
         const exports = require.cache[identifier] = original(name)
-        if (!name.endsWith('node_modules/STATE')) meta.modulepath.pop(name)
+        if (!name.endsWith('STATE')) meta.modulepath.pop(name)
         return exports
       }
     }
@@ -1171,13 +1459,14 @@ function patch_cache_in_browser (source_cache, module_cache) {
   }
 }
 require('./page') // or whatever is otherwise the main entry of our project
-
-},{"./page":8}],7:[function(require,module,exports){
+},{"./page":10}],9:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
 const { sdb, subs: [get] } = statedb(fallback_module)
 module.exports = create_component_menu
+const action_bar = require('../src/node_modules/action_bar')
+const search_bar = require('../src/node_modules/search_bar')
 const graph_explorer = require('../src/node_modules/graph_explorer')
 const chat_history = require('../src/node_modules/chat_history')
 const tabbed_editor = require('../src/node_modules/tabbed_editor')
@@ -1187,6 +1476,8 @@ async function create_component_menu (opts) {
     style: inject
   }
   const imports = {
+    action_bar,
+    search_bar,
     graph_explorer,
     chat_history,
     tabbed_editor
@@ -1369,13 +1660,19 @@ function fallback_module () {
   return {
     api: fallback_instance,
     _: {
-      graph_explorer: {
+      '../src/node_modules/action_bar': {
+        $: ''
+      },
+      '../src/node_modules/search_bar': {
+        $: ''
+      },
+      '../src/node_modules/graph_explorer': {
         $: '',
       },
-      chat_history: {
+      '../src/node_modules/chat_history': {
         $: '',
       },
-      tabbed_editor: {
+      '../src/node_modules/tabbed_editor': {
         $: '',
       }
     }
@@ -1383,13 +1680,19 @@ function fallback_module () {
   function fallback_instance () {
     return {
       _: {
-        graph_explorer: {
+        '../src/node_modules/action_bar': {
+          0: ''
+        },
+        '../src/node_modules/search_bar': {
+          0: ''
+        },
+        '../src/node_modules/graph_explorer': {
           0: ""
         },
-        chat_history: {
+        '../src/node_modules/chat_history': {
           0: ""
         },
-        tabbed_editor: {
+        '../src/node_modules/tabbed_editor': {
           0: ""
         }
       },
@@ -1528,7 +1831,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/web/index.js")
-},{"../src/node_modules/STATE":1,"../src/node_modules/chat_history":2,"../src/node_modules/graph_explorer":3,"../src/node_modules/tabbed_editor":5}],8:[function(require,module,exports){
+},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/chat_history":3,"../src/node_modules/graph_explorer":4,"../src/node_modules/search_bar":6,"../src/node_modules/tabbed_editor":7}],10:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
@@ -1619,4 +1922,4 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/STATE":1,"./index":7}]},{},[6]);
+},{"../src/node_modules/STATE":1,"./index":9}]},{},[8]);

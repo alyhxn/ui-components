@@ -2,6 +2,8 @@ const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
 const { sdb, subs: [get] } = statedb(fallback_module)
 module.exports = create_component_menu
+const action_bar = require('../src/node_modules/action_bar')
+const search_bar = require('../src/node_modules/search_bar')
 const graph_explorer = require('../src/node_modules/graph_explorer')
 const chat_history = require('../src/node_modules/chat_history')
 const tabbed_editor = require('../src/node_modules/tabbed_editor')
@@ -11,6 +13,8 @@ async function create_component_menu (opts) {
     style: inject
   }
   const imports = {
+    action_bar,
+    search_bar,
     graph_explorer,
     chat_history,
     tabbed_editor
@@ -193,13 +197,19 @@ function fallback_module () {
   return {
     api: fallback_instance,
     _: {
-      graph_explorer: {
+      '../src/node_modules/action_bar': {
+        $: ''
+      },
+      '../src/node_modules/search_bar': {
+        $: ''
+      },
+      '../src/node_modules/graph_explorer': {
         $: '',
       },
-      chat_history: {
+      '../src/node_modules/chat_history': {
         $: '',
       },
-      tabbed_editor: {
+      '../src/node_modules/tabbed_editor': {
         $: '',
       }
     }
@@ -207,13 +217,19 @@ function fallback_module () {
   function fallback_instance () {
     return {
       _: {
-        graph_explorer: {
+        '../src/node_modules/action_bar': {
+          0: ''
+        },
+        '../src/node_modules/search_bar': {
+          0: ''
+        },
+        '../src/node_modules/graph_explorer': {
           0: ""
         },
-        chat_history: {
+        '../src/node_modules/chat_history': {
           0: ""
         },
-        tabbed_editor: {
+        '../src/node_modules/tabbed_editor': {
           0: ""
         }
       },
