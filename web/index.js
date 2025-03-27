@@ -13,8 +13,8 @@ async function create_component_menu (opts) {
     style: inject
   }
   const imports = {
-    // action_bar,
-    // search_bar,
+    action_bar,
+    search_bar,
     graph_explorer,
     chat_history,
     tabbed_editor
