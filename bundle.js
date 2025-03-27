@@ -846,126 +846,7 @@ async function make_input_map (inputs) {
 
 
 module.exports = STATE
-},{"localdb":5}],2:[function(require,module,exports){
-(function (__filename){(function (){
-const STATE = require('STATE')
-const statedb = STATE(__filename)
-const { sdb, subs: [get] } = statedb(fallback_module)
-
-const search_bar = require('search_bar')
-
-module.exports = action_bar
-
-async function action_bar (opts = '') {
-  const { id, sdb } = await get(opts.sid)
-  const on = {
-    style: inject
-  }
-  const el = document.createElement('div')
-  const shadow = el.attachShadow({ mode: 'closed' })
-  shadow.innerHTML = `
-  <div class="action-bar-container">
-    <div class="action-bar-content">
-      <button class="icon-button">
-      </button>
-      <div class="separator"></div>
-      <button class="icon-button">
-      </button>
-      <div class="separator"></div>
-      <searchbar></searchbar>
-      <button class="icon-button">
-      </button>
-    </div>
-  </div>`
-  const subs = await sdb.watch(onbatch)
-  console.log(`actionbar subs: `, subs)
-  search_bar(subs[0]).then(el => shadow.querySelector('searchbar').replaceWith(el))
-
-  // to add a click event listener to the buttons:
-  // const [btn1, btn2, btn3] = shadow.querySelectorAll('button')
-  // btn1.addEventListener('click', () => { console.log('Terminal button clicked') })
-
-  return el
-  function onbatch (batch) {
-    for (const { type, data } of batch) {
-      on[type] && on[type](data)
-    }
-  }
-  function inject(data) {
-    const sheet = new CSSStyleSheet()
-    sheet.replaceSync(data)
-    shadow.adoptedStyleSheets = [sheet]
-  }
-}
-function fallback_module () {
-  return {
-    api: fallback_instance,
-    _: {
-      search_bar: {
-        $: ([app]) => app()
-      }
-    }
-  }
-  function fallback_instance () {
-    return {
-      _: {
-        search_bar: {
-          0: ''
-        }
-      },
-      drive: {
-        style: {
-          'theme.css': {
-            raw: `
-              .action-bar-container {
-                  display: flex;
-                  align-items: center;
-                  background-color: #212121;
-                  padding: 0.5rem;
-                  // min-width: 456px
-              }
-
-              .action-bar-content {
-                  display: flex;
-                  align-items: center;
-                  gap: 0.5rem;
-                  flex:1;
-              }
-
-              .icon-button {
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                padding: 0;
-                border: none;
-                background-color: transparent;
-                cursor: pointer;
-              }
-
-
-              .separator {
-                  width: 1px;
-                  height: 24px;
-                  background-color: #424242;
-              }
-
-              .search-bar-container {
-                flex: 1;
-                position: relative;
-              }
-              svg {
-                display: block;
-                margin: auto;
-              }
-            `
-          }
-        }
-      }
-    }
-  }
-}
-}).call(this)}).call(this,"/src/node_modules/action_bar.js")
-},{"STATE":1,"search_bar":6}],3:[function(require,module,exports){
+},{"localdb":4}],2:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1027,7 +908,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/chat_history.js")
-},{"STATE":1}],4:[function(require,module,exports){
+},{"STATE":1}],3:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1089,7 +970,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/graph_explorer.js")
-},{"STATE":1}],5:[function(require,module,exports){
+},{"STATE":1}],4:[function(require,module,exports){
 /******************************************************************************
   LOCALDB COMPONENT
 ******************************************************************************/
@@ -1187,174 +1068,7 @@ function localdb () {
     return target_key && JSON.parse(localStorage[target_key])
   } 
 }
-},{}],6:[function(require,module,exports){
-(function (__filename){(function (){
-const STATE = require('STATE')
-const statedb = STATE(__filename)
-const { sdb, subs: [get] } = statedb(fallback_module)
-
-// const { search, close } = require('icons')
-module.exports = search_bar
-async function search_bar (opts = '') {
-  const { id, sdb } = await get(opts.sid)
-  const on = {
-    style: inject
-  }
-  const el = document.createElement('div')
-  el.className = 'search-bar-container'
-  const shadow = el.attachShadow({ mode: 'closed' })
-  const sheet = new CSSStyleSheet()
-  shadow.innerHTML = `
-  <div class="search-input-container">
-    <div class="search-input-content">
-      <div class="search-input-text"></div>
-      <input type="text" class="search-input" style="display: none;">
-    </div>
-    <button class="search-reset-button"></button>
-  </div>`
-
-  const input_container = shadow.querySelector('.search-input-container')
-  const input_content = shadow.querySelector('.search-input-content')
-  const text_span = shadow.querySelector('.search-input-text')
-  const input_element = shadow.querySelector('.search-input')
-  const reset_button = shadow.querySelector('.search-reset-button')
-  let barmode = ''
-  const subs = await sdb.watch(onbatch)
-  console.log(`search bar subs: ${subs}`)
-
-  async function onbatch (batch) {
-    for (const { type, data } of batch) {
-      on[type] && on[type](data)
-    }
-  }
-  input_container.onclick = on_input_container_click
-  input_element.onblur = on_input_element_blur
-  reset_button.onclick = on_reset_click
-  text_span.onclick = on_span_click
-
-  return el
-  function inject(data) {
-    sheet.replaceSync(data)
-    shadow.adoptedStyleSheets = [sheet]
-  }
-  function show () {
-    input_content.replaceChildren(input_element)
-    input_element.style.display = 'block'
-    input_element.focus()
-    // reset_button.innerHTML = close()
-    barmode = 'already'
-  }
-  function hide () {
-    input_content.replaceChildren(text_span)
-    input_element.style.display = 'none'
-    // reset_button.innerHTML = search()
-  }
-  function on_input_container_click (event) {
-    // console.log('Focus Event:', event)
-    if (barmode === 'already') {
-      return
-    }
-    show()
-  }
-  function on_input_element_blur (event) {
-    // console.log('Blur Event:', event)
-    if (input_element.value === '') {
-      hide()
-    }
-  }
-  function on_span_click (event) {
-    event.stopPropagation()
-    handle_breadcrumb_click(event)
-  }
-  function on_reset_click (event) {
-    event.stopPropagation()
-    handle_reset(event)
-  }
-  function handle_reset (event) {
-    // console.log('Reset Event:', event)
-    input_element.value = ''
-    hide()
-  }
-  function handle_breadcrumb_click (event) {
-    // console.log('Breadcrumb Event:', event)
-    show()
-    input_element.placeholder = '#night'
-  }
-}
-function fallback_module () {
-  return {
-    api: fallback_instance
-  }
-  function fallback_instance () {
-    return {
-      drive: {
-        style: {
-          'theme.css':{
-            raw: `
-              .search-bar-container {
-                flex: 1;
-                position: relative;
-              }
-          
-              .search-input-container {
-                height: 2rem;
-                padding-left: 0.75rem;
-                padding-right: 0.75rem;
-                display: flex;
-                flex-direction: row;
-                align-items: center;
-                justify-content: center;
-                background-color: #303030;
-                border-radius: 0.375rem;
-                cursor: text;
-              }
-              
-              svg {
-                display: block;
-                margin: auto;
-              }
-              
-              .search-input-content {
-                flex: 1;
-              }
-          
-              .search-input-text {
-                font-size: 0.875rem;
-                color: #a0a0a0;
-              }
-          
-              .search-input {
-                width: 100%;
-                background-color: transparent;
-                outline: none;
-                border: none;
-                color: #a0a0a0;
-                font-size: 0.875rem;
-              }
-          
-              .search-reset-button {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                margin-left: 0;
-                padding: 0;
-                border: none;
-                background-color: transparent;
-              }
-          
-              .search-reset-button:hover {
-                cursor: pointer;
-              }
-            `
-          }
-        }
-      }
-    }
-  }
-}
-}).call(this)}).call(this,"/src/node_modules/search_bar.js")
-},{"STATE":1}],7:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1416,7 +1130,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor.js")
-},{"STATE":1}],8:[function(require,module,exports){
+},{"STATE":1}],6:[function(require,module,exports){
 patch_cache_in_browser(arguments[4], arguments[5])
 
 function patch_cache_in_browser (source_cache, module_cache) {
@@ -1459,14 +1173,14 @@ function patch_cache_in_browser (source_cache, module_cache) {
   }
 }
 require('./page') // or whatever is otherwise the main entry of our project
-},{"./page":10}],9:[function(require,module,exports){
+},{"./page":8}],7:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
 const { sdb, subs: [get] } = statedb(fallback_module)
 module.exports = create_component_menu
-const action_bar = require('../src/node_modules/action_bar')
-const search_bar = require('../src/node_modules/search_bar')
+// const action_bar = require('../src/node_modules/action_bar')
+// const search_bar = require('../src/node_modules/search_bar')
 const graph_explorer = require('../src/node_modules/graph_explorer')
 const chat_history = require('../src/node_modules/chat_history')
 const tabbed_editor = require('../src/node_modules/tabbed_editor')
@@ -1476,8 +1190,8 @@ async function create_component_menu (opts) {
     style: inject
   }
   const imports = {
-    action_bar,
-    search_bar,
+    // action_bar,
+    // search_bar,
     graph_explorer,
     chat_history,
     tabbed_editor
@@ -1660,12 +1374,12 @@ function fallback_module () {
   return {
     api: fallback_instance,
     _: {
-      '../src/node_modules/action_bar': {
-        $: ''
-      },
-      '../src/node_modules/search_bar': {
-        $: ''
-      },
+      // '../src/node_modules/action_bar': {
+      //   $: ''
+      // },
+      // '../src/node_modules/search_bar': {
+      //   $: ''
+      // },
       '../src/node_modules/graph_explorer': {
         $: '',
       },
@@ -1680,12 +1394,12 @@ function fallback_module () {
   function fallback_instance () {
     return {
       _: {
-        '../src/node_modules/action_bar': {
-          0: ''
-        },
-        '../src/node_modules/search_bar': {
-          0: ''
-        },
+        // '../src/node_modules/action_bar': {
+        //   0: ''
+        // },
+        // '../src/node_modules/search_bar': {
+        //   0: ''
+        // },
         '../src/node_modules/graph_explorer': {
           0: ""
         },
@@ -1831,7 +1545,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/web/index.js")
-},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/chat_history":3,"../src/node_modules/graph_explorer":4,"../src/node_modules/search_bar":6,"../src/node_modules/tabbed_editor":7}],10:[function(require,module,exports){
+},{"../src/node_modules/STATE":1,"../src/node_modules/chat_history":2,"../src/node_modules/graph_explorer":3,"../src/node_modules/tabbed_editor":5}],8:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
@@ -1922,4 +1636,4 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/STATE":1,"./index":9}]},{},[8]);
+},{"../src/node_modules/STATE":1,"./index":7}]},{},[6]);
