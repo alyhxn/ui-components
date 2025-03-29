@@ -26,7 +26,8 @@ const status = {
   local_statuses: {},
   listeners: {},
   missing_supers: new Set(),
-  imports: {}
+  imports: {},
+  expected_imports: {}
 }
 window.STATEMODULE = status
 
@@ -60,15 +61,31 @@ function STATE (address, modulepath) {
     const data = fallback()
     local_status.fallback_instance = data.api
 
-    if(data._)
+    const super_id = modulepath.split(/>(?=[^>]*$)/)[0]
+
+    if(super_id === status.current_node){
+      status.expected_imports[super_id].splice(status.expected_imports[super_id].indexOf(modulepath), 1)
+    }
+    else if(status.current_node){
+      let temp = status.current_node
+      while(temp !== super_id){ 
+        status.open_branches[temp] = 0
+        temp = temp.split(/>(?=[^>]*$)/)[0]
+      }
+    }
+
+    if(data._){
       status.open_branches[modulepath] = Object.keys(data._).length
+      status.expected_imports[modulepath] = Object.keys(data._)
+      status.current_node = modulepath
+    }
     
+
     local_status.fallback_module = new Function(`return ${fallback.toString()}`)()
     const updated_status = append_tree_node(modulepath, status)
     Object.assign(status.tree_pointers, updated_status.tree_pointers)
     Object.assign(status.open_branches, updated_status.open_branches)
     status.inits.push(init_module)
-
     if(!Object.values(status.open_branches).reduce((acc, curr) => acc + curr, 0)){
       status.inits.forEach(init => init())
     }
@@ -84,6 +101,7 @@ function STATE (address, modulepath) {
   }
   function append_tree_node (id, status) {
     const [super_id, name] = id.split(/>(?=[^>]*$)/)
+
     if(name){
       if(status.tree_pointers[super_id]){
         status.tree_pointers[super_id]._[name] = { $: { _: {} } }
@@ -609,7 +627,7 @@ function register_overrides ({overrides, ...args}) {
   function recurse ({ tree, path = '', id, xtype = 'instance', local_modulepaths = {} }) {
 
     tree._ && Object.entries(tree._).forEach(([type, instances]) => {
-      const sub_path = path + '>' + type.replace('.', '>')
+      const sub_path = path + '>' + type
       Object.entries(instances).forEach(([id, override]) => {
         if(typeof(override) === 'function'){
           let resultant_path = id === '$' ? sub_path : sub_path + ':' + id
@@ -638,10 +656,11 @@ function get_fallbacks ({ fallback, modulename, modulepath, instance_path }) {
     return data
 
     function merge_trees (data, path) {
+      console.log('data: ', data, path)
       if (data._) {
         Object.entries(data._).forEach(([type, data]) => merge_trees(data, path + '>' + type.split('$')[0].replace('.', '>')))
       } else {
-        data.$ = { _: status.tree_pointers[path]._ }
+        data.$ = { _: status.tree_pointers[path]?._ }
       }
     }
   }
@@ -909,7 +928,7 @@ function fallback_module () {
         $: ([app]) => app()
       },
       icons: {
-        $: ([app]) => app()
+        $: ''
       }
     }
   }
@@ -1428,7 +1447,7 @@ function fallback_module () {
     api: fallback_instance,
     _: {
       icons: {
-        $: ([app]) => app()
+        $: ''
       }
     }
   }
@@ -1613,6 +1632,7 @@ const statedb = STATE(__filename)
 const { sdb, subs: [get] } = statedb(fallback_module)
 module.exports = create_component_menu
 const action_bar = require('../src/node_modules/action_bar')
+delete require.cache[require.resolve('../src/node_modules/search_bar')]
 const search_bar = require('../src/node_modules/search_bar')
 const graph_explorer = require('../src/node_modules/graph_explorer')
 const chat_history = require('../src/node_modules/chat_history')
