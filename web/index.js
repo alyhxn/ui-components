@@ -3,6 +3,7 @@ const statedb = STATE(__filename)
 const { sdb, subs: [get] } = statedb(fallback_module)
 module.exports = create_component_menu
 const action_bar = require('../src/node_modules/action_bar')
+delete require.cache[require.resolve('../src/node_modules/search_bar')]
 const search_bar = require('../src/node_modules/search_bar')
 const graph_explorer = require('../src/node_modules/graph_explorer')
 const chat_history = require('../src/node_modules/chat_history')
