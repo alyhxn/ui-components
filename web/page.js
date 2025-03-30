@@ -4,7 +4,21 @@ const { sdb, subs: [get] } = statedb(fallback_module)
 /******************************************************************************
   PAGE
 ******************************************************************************/
-const app = require('./index')
+const app = require('../src/node_modules/menu')
+const action_bar = require('../src/node_modules/action_bar')
+delete require.cache[require.resolve('../src/node_modules/search_bar')]
+const search_bar = require('../src/node_modules/search_bar')
+const graph_explorer = require('../src/node_modules/graph_explorer')
+const chat_history = require('../src/node_modules/chat_history')
+const tabbed_editor = require('../src/node_modules/tabbed_editor')
+
+const imports = {
+  action_bar,
+  search_bar,
+  graph_explorer,
+  chat_history,
+  tabbed_editor
+}
 const sheet = new CSSStyleSheet()
 config().then(() => boot({ sid: '' }))
 
@@ -50,7 +64,20 @@ async function boot (opts) {
   // ELEMENTS
   // ----------------------------------------
   // desktop
-  shadow.append(await app(subs[1]))
+  const view = document.createElement('div')
+  shadow.append(await menu(subs[1]), onmessage, view)
+  
+  function onmessage (msg) {
+    const { type, data } = msg
+    if (type === '???') {
+      const name = data
+      const [sid] = subs.filter(x => {
+        if (x.type === name) return x.sid
+      })
+      const el = imports[name](sid)
+      view.append(el)
+    }
+  }
 
   // ----------------------------------------
   // INIT
@@ -65,24 +92,21 @@ async function inject (data) {
   sheet.replaceSync(data.join('\n'))
 }
 function fallback_module () {
-  return {
-    _: {
-      './index': {
-        $: '',
-        0: override_app
-      }
-    },
-    drive: {
-      theme: {
-        'style.css': {
-          raw: 'body { font-family: \'system-ui\'; }'
-        }
-      }
-    }
-  }
-
-  function override_app ([app]) {
-    const data = app()
+  const menuname = '../src/node_modules/menu'
+  const names = [
+    '../src/node_modules/action_bar',
+    '../src/node_modules/search_bar',
+    '../src/node_modules/chat_history',
+    '../src/node_modules/graph_explorer',
+    '../src/node_modules/tabbed_editor',
+  ]
+  const subs = {}
+  names.forEach(name => (subs[name] = ''))
+  subs[menuname] = override
+  return { _: subs }
+  function override ([menu]) {
+    const data = menu()
+    data.drive['names.json'] = { raw: JSON.stringify(names) }
     return data
   }
 }

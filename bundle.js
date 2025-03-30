@@ -991,7 +991,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/action_bar.js")
-},{"STATE":1,"icons":5,"search_bar":7}],3:[function(require,module,exports){
+},{"STATE":1,"icons":5,"search_bar":8}],3:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1353,303 +1353,14 @@ function localdb () {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, subs: [get] } = statedb(fallback_module)
-
-const { search, close } = require('icons')
-module.exports = search_bar
-async function search_bar (opts = '') {
-  const { id, sdb } = await get(opts.sid)
-  const on = {
-    style: inject
-  }
-  const el = document.createElement('div')
-  el.className = 'search-bar-container'
-  const shadow = el.attachShadow({ mode: 'closed' })
-  const sheet = new CSSStyleSheet()
-  shadow.innerHTML = `
-  <div class="search-input-container">
-    <div class="search-input-content">
-      <div class="search-input-text"></div>
-      <input type="text" class="search-input" style="display: none;">
-    </div>
-    <button class="search-reset-button"></button>
-  </div>`
-
-  const input_container = shadow.querySelector('.search-input-container')
-  const input_content = shadow.querySelector('.search-input-content')
-  const text_span = shadow.querySelector('.search-input-text')
-  const input_element = shadow.querySelector('.search-input')
-  const reset_button = shadow.querySelector('.search-reset-button')
-  let barmode = ''
-  const subs = await sdb.watch(onbatch)
-  console.log(`search bar subs: ${subs}`)
-
-  async function onbatch (batch) {
-    for (const { type, data } of batch) {
-      on[type] && on[type](data)
-    }
-  }
-  input_container.onclick = on_input_container_click
-  input_element.onblur = on_input_element_blur
-  reset_button.onclick = on_reset_click
-  text_span.onclick = on_span_click
-
-  return el
-  function inject(data) {
-    sheet.replaceSync(data)
-    shadow.adoptedStyleSheets = [sheet]
-  }
-  function show () {
-    input_content.replaceChildren(input_element)
-    input_element.style.display = 'block'
-    input_element.focus()
-    reset_button.innerHTML = close()
-    barmode = 'already'
-  }
-  function hide () {
-    input_content.replaceChildren(text_span)
-    input_element.style.display = 'none'
-    reset_button.innerHTML = search()
-  }
-  function on_input_container_click (event) {
-    // console.log('Focus Event:', event)
-    if (barmode === 'already') {
-      return
-    }
-    show()
-  }
-  function on_input_element_blur (event) {
-    // console.log('Blur Event:', event)
-    if (input_element.value === '') {
-      hide()
-    }
-  }
-  function on_span_click (event) {
-    event.stopPropagation()
-    handle_breadcrumb_click(event)
-  }
-  function on_reset_click (event) {
-    event.stopPropagation()
-    handle_reset(event)
-  }
-  function handle_reset (event) {
-    // console.log('Reset Event:', event)
-    input_element.value = ''
-    hide()
-  }
-  function handle_breadcrumb_click (event) {
-    // console.log('Breadcrumb Event:', event)
-    show()
-    input_element.placeholder = '#night'
-  }
-}
-function fallback_module () {
-  return {
-    api: fallback_instance,
-    _: {
-      icons: {
-        $: ''
-      }
-    }
-  }
-  function fallback_instance () {
-    return {
-      drive: {
-        style: {
-          'theme.css':{
-            raw: `
-              .search-bar-container {
-                flex: 1;
-                position: relative;
-              }
-          
-              .search-input-container {
-                height: 2rem;
-                padding-left: 0.75rem;
-                padding-right: 0.75rem;
-                display: flex;
-                flex-direction: row;
-                align-items: center;
-                justify-content: center;
-                background-color: #303030;
-                border-radius: 0.375rem;
-                cursor: text;
-              }
-              
-              svg {
-                display: block;
-                margin: auto;
-              }
-              
-              .search-input-content {
-                flex: 1;
-              }
-          
-              .search-input-text {
-                font-size: 0.875rem;
-                color: #a0a0a0;
-              }
-          
-              .search-input {
-                width: 100%;
-                background-color: transparent;
-                outline: none;
-                border: none;
-                color: #a0a0a0;
-                font-size: 0.875rem;
-              }
-          
-              .search-reset-button {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                margin-left: 0;
-                padding: 0;
-                border: none;
-                background-color: transparent;
-              }
-          
-              .search-reset-button:hover {
-                cursor: pointer;
-              }
-            `
-          }
-        }
-      }
-    }
-  }
-}
-}).call(this)}).call(this,"/src/node_modules/search_bar.js")
-},{"STATE":1,"icons":5}],8:[function(require,module,exports){
-(function (__filename){(function (){
-const STATE = require('STATE')
-const statedb = STATE(__filename)
-const { sdb, subs: [get] } = statedb(fallback_module)
-
-module.exports = tabbed_editor
-async function tabbed_editor(opts) {
-  const { id, sdb } = await get(opts.sid)
-  const on = {
-    style: inject
-  }
-  const div = document.createElement('div')
-  const shadow = div.attachShadow({ mode: 'closed' })
-  shadow.innerHTML = `<h1>Tabbed-Editor</h1>`
-  shadow.querySelector('h1').className = 'text'
-  const subs = await sdb.watch(onbatch)
-  return div
-  function onbatch (batch) {
-    for (const { type, data } of batch) {
-      on[type] && on[type](data)
-    }
-  }
-  function inject(data) {
-    const sheet = new CSSStyleSheet()
-    sheet.replaceSync(data)
-    shadow.adoptedStyleSheets = [sheet]
-  }
-}
-function fallback_module() {
-  return {
-    api: fallback_instance,
-  }
-  function fallback_instance() {
-    return {
-      drive: {
-        style: {
-          'theme.css': {
-            raw: `
-              .text {
-                color: #D8DEE9;
-                background-color: #2E3440;
-                padding: 1rem;
-                border-left: 4px solid #81A1C1;
-                line-height: 1.6;
-                box-shadow: 0 2px 5px rgba(46, 52, 64, 0.5);
-                transition: background-color 0.3s ease, color 0.3s ease;
-              }
-              
-              .text:hover {
-                color: #88C0D0;
-                background-color: #3B4252;
-              }
-            `
-          }
-        }
-      }
-    }
-  }
-}
-
-}).call(this)}).call(this,"/src/node_modules/tabbed_editor.js")
-},{"STATE":1}],9:[function(require,module,exports){
-patch_cache_in_browser(arguments[4], arguments[5])
-
-function patch_cache_in_browser (source_cache, module_cache) {
-  const meta = { modulepath: ['page'], paths: {} }
-  for (const key of Object.keys(source_cache)) {
-    const [module, names] = source_cache[key]
-    const dependencies = names || {}
-    source_cache[key][0] = patch(module, dependencies, meta)
-  }
-  function patch (module, dependencies, meta) {
-    const MAP = {}
-    for (const [name, number] of Object.entries(dependencies)) MAP[name] = number
-    return (...args) => {
-      const original = args[0]
-      require.cache = module_cache
-      require.resolve = resolve
-      args[0] = require
-      return module(...args)
-      function require (name) {
-        const identifier = resolve(name)
-        if (name.endsWith('STATE')) {
-          const modulepath = meta.modulepath.join('>')
-          const original_export = require.cache[identifier] || (require.cache[identifier] = original(name))
-          const exports = (...args) => original_export(...args, modulepath)
-          return exports
-        } else if (require.cache[identifier]) return require.cache[identifier]
-        else {
-          const counter = meta.modulepath.concat(name).join('>')
-          if (!meta.paths[counter]) meta.paths[counter] = 0
-          let localid = `${name}${meta.paths[counter] ? '#' + meta.paths[counter] : ''}`
-          meta.paths[counter]++
-          meta.modulepath.push(localid.replace(/^\.\+/, '').replace('>', ','))
-        }
-        const exports = require.cache[identifier] = original(name)
-        if (!name.endsWith('STATE')) meta.modulepath.pop(name)
-        return exports
-      }
-    }
-    function resolve (name) { return MAP[name] }
-  }
-}
-require('./page') // or whatever is otherwise the main entry of our project
-},{"./page":11}],10:[function(require,module,exports){
-(function (__filename){(function (){
-const STATE = require('../src/node_modules/STATE')
-const statedb = STATE(__filename)
-const { sdb, subs: [get] } = statedb(fallback_module)
 module.exports = create_component_menu
-const action_bar = require('../src/node_modules/action_bar')
-delete require.cache[require.resolve('../src/node_modules/search_bar')]
-const search_bar = require('../src/node_modules/search_bar')
-const graph_explorer = require('../src/node_modules/graph_explorer')
-const chat_history = require('../src/node_modules/chat_history')
-const tabbed_editor = require('../src/node_modules/tabbed_editor')
-async function create_component_menu (opts) {
+async function create_component_menu (opts, onmessage, view) {
   const { id, sdb } = await get(opts.sid)
   const on = {
     style: inject
   }
-  const imports = {
-    action_bar,
-    search_bar,
-    graph_explorer,
-    chat_history,
-    tabbed_editor
-  }
-  const el = document.createElement('div')
+
+  const el = view
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
   <div class="nav-bar-container">
@@ -1826,43 +1537,11 @@ async function create_component_menu (opts) {
 function fallback_module () {
   return {
     api: fallback_instance,
-    _: {
-      '../src/node_modules/action_bar': {
-        $: ''
-      },
-      '../src/node_modules/search_bar': {
-        $: ''
-      },
-      '../src/node_modules/graph_explorer': {
-        $: '',
-      },
-      '../src/node_modules/chat_history': {
-        $: '',
-      },
-      '../src/node_modules/tabbed_editor': {
-        $: '',
-      }
-    }
+    _: {}
   }
   function fallback_instance () {
     return {
-      _: {
-        '../src/node_modules/action_bar': {
-          0: ''
-        },
-        '../src/node_modules/search_bar': {
-          0: ''
-        },
-        '../src/node_modules/graph_explorer': {
-          0: ""
-        },
-        '../src/node_modules/chat_history': {
-          0: ""
-        },
-        '../src/node_modules/tabbed_editor': {
-          0: ""
-        }
-      },
+      _: {},
       drive: {
         style: {
           'theme.css': {
@@ -1997,8 +1676,285 @@ function fallback_module () {
     }
   }
 }
-}).call(this)}).call(this,"/web/index.js")
-},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/chat_history":3,"../src/node_modules/graph_explorer":4,"../src/node_modules/search_bar":7,"../src/node_modules/tabbed_editor":8}],11:[function(require,module,exports){
+}).call(this)}).call(this,"/src/node_modules/menu.js")
+},{"STATE":1}],8:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { sdb, subs: [get] } = statedb(fallback_module)
+
+const { search, close } = require('icons')
+module.exports = search_bar
+async function search_bar (opts = '') {
+  const { id, sdb } = await get(opts.sid)
+  const on = {
+    style: inject
+  }
+  const el = document.createElement('div')
+  el.className = 'search-bar-container'
+  const shadow = el.attachShadow({ mode: 'closed' })
+  const sheet = new CSSStyleSheet()
+  shadow.innerHTML = `
+  <div class="search-input-container">
+    <div class="search-input-content">
+      <div class="search-input-text"></div>
+      <input type="text" class="search-input" style="display: none;">
+    </div>
+    <button class="search-reset-button"></button>
+  </div>`
+
+  const input_container = shadow.querySelector('.search-input-container')
+  const input_content = shadow.querySelector('.search-input-content')
+  const text_span = shadow.querySelector('.search-input-text')
+  const input_element = shadow.querySelector('.search-input')
+  const reset_button = shadow.querySelector('.search-reset-button')
+  let barmode = ''
+  const subs = await sdb.watch(onbatch)
+  console.log(`search bar subs: ${subs}`)
+
+  async function onbatch (batch) {
+    for (const { type, data } of batch) {
+      on[type] && on[type](data)
+    }
+  }
+  input_container.onclick = on_input_container_click
+  input_element.onblur = on_input_element_blur
+  reset_button.onclick = on_reset_click
+  text_span.onclick = on_span_click
+
+  return el
+  function inject(data) {
+    sheet.replaceSync(data)
+    shadow.adoptedStyleSheets = [sheet]
+  }
+  function show () {
+    input_content.replaceChildren(input_element)
+    input_element.style.display = 'block'
+    input_element.focus()
+    reset_button.innerHTML = close()
+    barmode = 'already'
+  }
+  function hide () {
+    input_content.replaceChildren(text_span)
+    input_element.style.display = 'none'
+    reset_button.innerHTML = search()
+  }
+  function on_input_container_click (event) {
+    // console.log('Focus Event:', event)
+    if (barmode === 'already') {
+      return
+    }
+    show()
+  }
+  function on_input_element_blur (event) {
+    // console.log('Blur Event:', event)
+    if (input_element.value === '') {
+      hide()
+    }
+  }
+  function on_span_click (event) {
+    event.stopPropagation()
+    handle_breadcrumb_click(event)
+  }
+  function on_reset_click (event) {
+    event.stopPropagation()
+    handle_reset(event)
+  }
+  function handle_reset (event) {
+    // console.log('Reset Event:', event)
+    input_element.value = ''
+    hide()
+  }
+  function handle_breadcrumb_click (event) {
+    // console.log('Breadcrumb Event:', event)
+    show()
+    input_element.placeholder = '#night'
+  }
+}
+function fallback_module () {
+  return {
+    api: fallback_instance,
+    _: {
+      icons: {
+        $: ''
+      }
+    }
+  }
+  function fallback_instance () {
+    return {
+      drive: {
+        style: {
+          'theme.css':{
+            raw: `
+              .search-bar-container {
+                flex: 1;
+                position: relative;
+              }
+          
+              .search-input-container {
+                height: 2rem;
+                padding-left: 0.75rem;
+                padding-right: 0.75rem;
+                display: flex;
+                flex-direction: row;
+                align-items: center;
+                justify-content: center;
+                background-color: #303030;
+                border-radius: 0.375rem;
+                cursor: text;
+              }
+              
+              svg {
+                display: block;
+                margin: auto;
+              }
+              
+              .search-input-content {
+                flex: 1;
+              }
+          
+              .search-input-text {
+                font-size: 0.875rem;
+                color: #a0a0a0;
+              }
+          
+              .search-input {
+                width: 100%;
+                background-color: transparent;
+                outline: none;
+                border: none;
+                color: #a0a0a0;
+                font-size: 0.875rem;
+              }
+          
+              .search-reset-button {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                margin-left: 0;
+                padding: 0;
+                border: none;
+                background-color: transparent;
+              }
+          
+              .search-reset-button:hover {
+                cursor: pointer;
+              }
+            `
+          }
+        }
+      }
+    }
+  }
+}
+}).call(this)}).call(this,"/src/node_modules/search_bar.js")
+},{"STATE":1,"icons":5}],9:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { sdb, subs: [get] } = statedb(fallback_module)
+
+module.exports = tabbed_editor
+async function tabbed_editor(opts) {
+  const { id, sdb } = await get(opts.sid)
+  const on = {
+    style: inject
+  }
+  const div = document.createElement('div')
+  const shadow = div.attachShadow({ mode: 'closed' })
+  shadow.innerHTML = `<h1>Tabbed-Editor</h1>`
+  shadow.querySelector('h1').className = 'text'
+  const subs = await sdb.watch(onbatch)
+  return div
+  function onbatch (batch) {
+    for (const { type, data } of batch) {
+      on[type] && on[type](data)
+    }
+  }
+  function inject(data) {
+    const sheet = new CSSStyleSheet()
+    sheet.replaceSync(data)
+    shadow.adoptedStyleSheets = [sheet]
+  }
+}
+function fallback_module() {
+  return {
+    api: fallback_instance,
+  }
+  function fallback_instance() {
+    return {
+      drive: {
+        style: {
+          'theme.css': {
+            raw: `
+              .text {
+                color: #D8DEE9;
+                background-color: #2E3440;
+                padding: 1rem;
+                border-left: 4px solid #81A1C1;
+                line-height: 1.6;
+                box-shadow: 0 2px 5px rgba(46, 52, 64, 0.5);
+                transition: background-color 0.3s ease, color 0.3s ease;
+              }
+              
+              .text:hover {
+                color: #88C0D0;
+                background-color: #3B4252;
+              }
+            `
+          }
+        }
+      }
+    }
+  }
+}
+
+}).call(this)}).call(this,"/src/node_modules/tabbed_editor.js")
+},{"STATE":1}],10:[function(require,module,exports){
+patch_cache_in_browser(arguments[4], arguments[5])
+
+function patch_cache_in_browser (source_cache, module_cache) {
+  const meta = { modulepath: ['page'], paths: {} }
+  for (const key of Object.keys(source_cache)) {
+    const [module, names] = source_cache[key]
+    const dependencies = names || {}
+    source_cache[key][0] = patch(module, dependencies, meta)
+  }
+  function patch (module, dependencies, meta) {
+    const MAP = {}
+    for (const [name, number] of Object.entries(dependencies)) MAP[name] = number
+    return (...args) => {
+      const original = args[0]
+      require.cache = module_cache
+      require.resolve = resolve
+      args[0] = require
+      return module(...args)
+      function require (name) {
+        const identifier = resolve(name)
+        if (name.endsWith('STATE')) {
+          const modulepath = meta.modulepath.join('>')
+          const original_export = require.cache[identifier] || (require.cache[identifier] = original(name))
+          const exports = (...args) => original_export(...args, modulepath)
+          return exports
+        } else if (require.cache[identifier]) return require.cache[identifier]
+        else {
+          const counter = meta.modulepath.concat(name).join('>')
+          if (!meta.paths[counter]) meta.paths[counter] = 0
+          let localid = `${name}${meta.paths[counter] ? '#' + meta.paths[counter] : ''}`
+          meta.paths[counter]++
+          meta.modulepath.push(localid.replace(/^\.\+/, '').replace('>', ','))
+        }
+        const exports = require.cache[identifier] = original(name)
+        if (!name.endsWith('STATE')) meta.modulepath.pop(name)
+        return exports
+      }
+    }
+    function resolve (name) { return MAP[name] }
+  }
+}
+require('./page') // or whatever is otherwise the main entry of our project
+},{"./page":11}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
@@ -2006,7 +1962,21 @@ const { sdb, subs: [get] } = statedb(fallback_module)
 /******************************************************************************
   PAGE
 ******************************************************************************/
-const app = require('./index')
+const app = require('../src/node_modules/menu')
+const action_bar = require('../src/node_modules/action_bar')
+delete require.cache[require.resolve('../src/node_modules/search_bar')]
+const search_bar = require('../src/node_modules/search_bar')
+const graph_explorer = require('../src/node_modules/graph_explorer')
+const chat_history = require('../src/node_modules/chat_history')
+const tabbed_editor = require('../src/node_modules/tabbed_editor')
+
+const imports = {
+  action_bar,
+  search_bar,
+  graph_explorer,
+  chat_history,
+  tabbed_editor
+}
 const sheet = new CSSStyleSheet()
 config().then(() => boot({ sid: '' }))
 
@@ -2052,7 +2022,20 @@ async function boot (opts) {
   // ELEMENTS
   // ----------------------------------------
   // desktop
-  shadow.append(await app(subs[1]))
+  const view = document.createElement('div')
+  shadow.append(await menu(subs[1]), onmessage, view)
+  
+  function onmessage (msg) {
+    const { type, data } = msg
+    if (type === '???') {
+      const name = data
+      const [sid] = subs.filter(x => {
+        if (x.type === name) return x.sid
+      })
+      const el = imports[name](sid)
+      view.append(el)
+    }
+  }
 
   // ----------------------------------------
   // INIT
@@ -2067,26 +2050,23 @@ async function inject (data) {
   sheet.replaceSync(data.join('\n'))
 }
 function fallback_module () {
-  return {
-    _: {
-      './index': {
-        $: '',
-        0: override_app
-      }
-    },
-    drive: {
-      theme: {
-        'style.css': {
-          raw: 'body { font-family: \'system-ui\'; }'
-        }
-      }
-    }
-  }
-
-  function override_app ([app]) {
-    const data = app()
+  const menuname = '../src/node_modules/menu'
+  const names = [
+    '../src/node_modules/action_bar',
+    '../src/node_modules/search_bar',
+    '../src/node_modules/chat_history',
+    '../src/node_modules/graph_explorer',
+    '../src/node_modules/tabbed_editor',
+  ]
+  const subs = {}
+  names.forEach(name => (subs[name] = ''))
+  subs[menuname] = override
+  return { _: subs }
+  function override ([menu]) {
+    const data = menu()
+    data.drive['names.json'] = { raw: JSON.stringify(names) }
     return data
   }
 }
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/STATE":1,"./index":10}]},{},[9]);
+},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/chat_history":3,"../src/node_modules/graph_explorer":4,"../src/node_modules/menu":7,"../src/node_modules/search_bar":8,"../src/node_modules/tabbed_editor":9}]},{},[10]);
