@@ -1354,174 +1354,90 @@ const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, subs: [get] } = statedb(fallback_module)
 module.exports = create_component_menu
-async function create_component_menu (opts, onmessage, view) {
+async function create_component_menu (opts, names, inicheck, callbacks) {
   const { id, sdb } = await get(opts.sid)
   const on = {
     style: inject
   }
+  const {
+    on_checkbox_change,
+    on_label_click,
+    on_select_all_toggle
+  } = callbacks
 
-  const el = view
+  const checkobject = {}
+  inicheck.forEach(i => {
+    checkobject[i - 1] = true
+  })
+  const all_checked = inicheck.length === 0 || Object.keys(checkobject).length === names.length
+
+  const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
-  <div class="nav-bar-container">
+  <div class="nav-bar-container-inner">
     <div class="nav-bar">
       <button class="menu-toggle-button">☰ MENU</button>
       <div class="menu hidden">
         <div class="menu-header">
-          <button class="unselect-all-button">Unselect All</button>
+          <button class="unselect-all-button">${all_checked ? 'Unselect All' : 'Select All'}</button>
         </div>
         <ul class="menu-list"></ul>
       </div>
     </div>
-  </div>
-  <div class="components-wrapper"></div>`
-  // styling
-  document.body.style.margin = 0
-  const sheet = new CSSStyleSheet()
-  shadow.adoptedStyleSheets = [sheet]
-  // refering to template
-  const list = shadow.querySelector('.menu-list')
-  const wrapper = shadow.querySelector('.components-wrapper')
+  </div>`
+
   const menu = shadow.querySelector('.menu')
   const toggle_btn = shadow.querySelector('.menu-toggle-button')
   const unselect_btn = shadow.querySelector('.unselect-all-button')
-  // helper variables
-  const entries = Object.entries(imports)
-  const checkboxes = []
-  const wrappers = []
-  const names = []
-  const url_params = new URLSearchParams(window.location.search)
-  const checked_param = url_params.get('checked')
-  let initial_checked = []
-  const selected_name = url_params.get('selected')
-  let current_wrapper = null
-  // events
-  if (checked_param) {
-    try {
-      initial_checked = JSON.parse(checked_param)
-      if (!Array.isArray(initial_checked)) initial_checked = []
-    } catch (e) {
-      console.error('Error parsing checked parameter:', e)
-      initial_checked = []
-    }
-  }
-  const subs = await sdb.watch(onbatch)
-  entries.forEach(create_list)
+  const list = shadow.querySelector('.menu-list')
 
-  unselect_btn.onclick = on_unselect
-  toggle_btn.onclick = on_menu_toggle
-  document.onclick = on_doc_click
-  window.onload = scroll_to_selected
-
-  return el
-
-  async function create_list ([name, factory], index) {
-    const checked = initial_checked.includes(index + 1) || initial_checked.length === 0  
-    // Menu List
+  names.forEach((name, index) => {
+    const is_checked = all_checked || checkobject[index] === true
     const menu_item = document.createElement('li')
     menu_item.className = 'menu-item'
     menu_item.innerHTML = `
-    <span>${name}</span>
-    <input type="checkbox" ${checked ? 'checked' : ''}>`
-    const label = menu_item.querySelector('span')
+      <span data-index="${index}" data-name="${name}">${name}</span>
+      <input type="checkbox" data-index="${index}" ${is_checked ? 'checked' : ''}>
+    `
+    list.appendChild(menu_item)
+
     const checkbox = menu_item.querySelector('input')
-  
-    list.append(menu_item)
-    checkboxes.push(checkbox)
-    names.push(name)
+    const label = menu_item.querySelector('span')
 
-    // Actual Component
-    const outer = document.createElement('div')
-    outer.className = 'component-outer-wrapper'
-    outer.style.display = checked ? 'block' : 'none'
-    outer.innerHTML = `
-    <div class="component-name-label">${name}</div>
-    <div class="component-wrapper"></div>`
-    wrappers.push(outer)
-    const inner = outer.querySelector('.component-wrapper')
-    inner.append(await factory(subs[index]))
-    console.log(index)
-    wrapper.append(outer)
-    // event
-    checkbox.onchange = on_checkbox
-    label.onclick = on_label
+    checkbox.onchange = (e) => {
+      on_checkbox_change({ index, checked: e.target.checked })
+    }
 
-    function on_checkbox (e) {
-      outer.style.display = e.target.checked ? 'block' : 'none'
-      update_url(checkboxes)
+    label.onclick = () => {
+      on_label_click({ index, name })
+      menu.classList.add('hidden')
     }
-  
-    function on_label () {
-      inner.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      update_url(checkboxes, name)
-      if (current_wrapper && current_wrapper !== outer) {
-        current_wrapper.style.backgroundColor = ''
-      }
-      outer.style.backgroundColor = 'lightblue'
-      current_wrapper = outer
-    }
-  }
+  })
+  // event listeners
+  const subs = await sdb.watch(onbatch)
+  toggle_btn.onclick = on_toggle_btn
+  unselect_btn.onclick = on_unselect_btn
+  document.onclick = handle_document_click
 
-  function on_unselect () {
-    if (unselect_btn.textContent === 'Unselect All') {
-      checkboxes.forEach(c => c.checked = false)
-      wrappers.forEach(w => w.style.display = 'none')
-      unselect_btn.textContent = 'Select All'
-    } else {
-      checkboxes.forEach(c => c.checked = true)
-      wrappers.forEach(w => w.style.display = 'block')
-      unselect_btn.textContent = 'Unselect All'
-    }
-    update_url(checkboxes)
-    if (current_wrapper) {
-      current_wrapper.style.backgroundColor = ''
-      current_wrapper = null
-    }
-  }
+  return el
 
-  function on_menu_toggle (e) {
+  function on_toggle_btn (e) {
     e.stopPropagation()
     menu.classList.toggle('hidden')
   }
 
-  function on_doc_click (e) {
-    if (!menu.classList.contains('hidden') && !menu.contains(e.target) && !toggle_btn.contains(e.target)) {
+  function on_unselect_btn () {
+    const select_all = unselect_btn.textContent === 'Select All'
+    unselect_btn.textContent = select_all ? 'Unselect All' : 'Select All'
+    list.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = select_all })
+    on_select_all_toggle({ selectAll: select_all })
+  }
+
+  function handle_document_click (e) {
+    const path = e.composedPath()
+    if (!menu.classList.contains('hidden') && !path.includes(el)) {
       menu.classList.add('hidden')
     }
-  }
-
-  function scroll_to_selected () {
-    if (selected_name) {
-      const i = names.indexOf(selected_name)
-      if (i !== -1) {
-        const w = wrappers[i]
-        w.scrollIntoView({ behavior: 'smooth', block: 'center' })
-        w.style.backgroundColor = 'lightblue'
-        current_wrapper = w
-      }
-    }
-  }
-
-  function update_url (checkboxes, selected) {
-    const checked = checkboxes.reduce((acc, c, i) => {
-      if (c.checked) acc.push(i + 1)
-      return acc
-    }, [])
-
-    const params = new URLSearchParams(window.location.search)
-    if (checked.length > 0 && checked.length < checkboxes.length) {
-      params.set('checked', `[${checked.join(',')}]`)
-    } else {
-      params.delete('checked')
-    }
-
-    if (selected) {
-      params.set('selected', selected)
-    } else {
-      params.delete('selected')
-    }
-
-    window.history.pushState(null, '', `${window.location.pathname}?${params}`)
   }
 
   function onbatch (batch) {
@@ -1530,68 +1446,80 @@ async function create_component_menu (opts, onmessage, view) {
     }
   }
 
-  async function inject (data) {
-    sheet.replaceSync(data.join('\n'))
+  function inject (data) {
+    const sheet = new CSSStyleSheet()
+    sheet.replaceSync(data)
+    shadow.adoptedStyleSheets = [sheet]
   }
 }
 function fallback_module () {
   return {
-    api: fallback_instance,
-    _: {}
+    api: fallback_instance
   }
   function fallback_instance () {
     return {
-      _: {},
       drive: {
         style: {
           'theme.css': {
             raw: `
-            .nav-bar-container {
+            :host {
+              display: block;
               position: sticky;
               top: 0;
               z-index: 100;
               background-color: #e0e0e0;
             }
-  
+
+            .nav-bar-container-inner {
+            }
+
             .nav-bar {
               display: flex;
+              position: relative;
               justify-content: center;
               align-items: center;
               padding: 10px 20px;
-              background-color: #e0e0e0;
               border-bottom: 2px solid #333;
+              min-height: 30px;
             }
-  
+
             .menu-toggle-button {
               padding: 10px;
               background-color: #e0e0e0;
               border: none;
               cursor: pointer;
               border-radius: 5px;
+              font-weight: bold;
             }
-  
+
+            .menu-toggle-button:hover {
+              background-color: #d0d0d0;
+            }
+
             .menu.hidden {
               display: none;
             }
-  
+
             .menu {
               display: block;
               position: absolute;
               top: 100%;
               left: 50%;
               transform: translateX(-50%);
-              width: 200px;
+              width: 250px;
+              max-width: 90%;
               background-color: #f0f0f0;
               padding: 10px;
               border-radius: 0 0 5px 5px;
-              box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+              box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+              z-index: 101;
             }
-  
+
             .menu-header {
               margin-bottom: 10px;
               text-align: center;
             }
-  
+
             .unselect-all-button {
               padding: 8px 12px;
               border: none;
@@ -1600,7 +1528,11 @@ function fallback_module () {
               border-radius: 5px;
               width: 100%;
             }
-  
+
+            .unselect-all-button:hover {
+              background-color: #c0c0c0;
+            }
+
             .menu-list {
               list-style: none;
               padding: 0;
@@ -1609,66 +1541,51 @@ function fallback_module () {
               overflow-y: auto;
               background-color: #f0f0f0;
             }
-  
+
             .menu-list::-webkit-scrollbar {
-              width: 0;
-              background: transparent;
+              width: 8px;
             }
-  
+
+            .menu-list::-webkit-scrollbar-track {
+              background: #f0f0f0;
+            }
+
             .menu-list::-webkit-scrollbar-thumb {
-              background: transparent;
+              background: #ccc;
+              border-radius: 4px;
             }
-  
+
+            .menu-list::-webkit-scrollbar-thumb:hover {
+              background: #bbb;
+            }
+
             .menu-item {
               display: flex;
               justify-content: space-between;
               align-items: center;
-              padding: 8px 0;
+              padding: 8px 5px;
               border-bottom: 1px solid #ccc;
-              cursor: pointer;
             }
-  
+
+            .menu-item span {
+              cursor: pointer;
+              flex-grow: 1;
+              margin-right: 10px;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
+            }
+
+            .menu-item span:hover {
+              color: #007bff;
+            }
+
             .menu-item:last-child {
               border-bottom: none;
             }
-  
-            .component-container {
-              flex-grow: 1;
-              padding-top: 20px + 50px;
-              padding-left: 20px;
-              padding-right: 20px;
-              padding-bottom: 20px;
-            }
-  
-            .components-wrapper {
-              width: 95%;
-              margin: 0 auto;
-              padding: 2.5%;
-            }
-  
-            .component-outer-wrapper {
-              margin-bottom: 20px;
-              padding: 0px 0px 10px 0px;
-            }
-  
-            .component-name-label {
-              background-color:transparent;
-              padding: 8px 15px;
-              text-align: center;
-              font-weight: bold;
-            }
-  
-            .component-wrapper {
-              padding: 15px;
-              border:3px solid #666;
-              resize:both;
-              overflow: auto;
-              border-radius: 0px;
-              background-color:#ffffff;
-            }
-  
-            .component-wrapper:last-child {
-              margin-bottom: 0;
+
+            .menu-item input[type="checkbox"] {
+              flex-shrink: 0;
             }`
           }
         }
@@ -1676,6 +1593,7 @@ function fallback_module () {
     }
   }
 }
+
 }).call(this)}).call(this,"/src/node_modules/menu.js")
 },{"STATE":1}],8:[function(require,module,exports){
 (function (__filename){(function (){
@@ -1962,7 +1880,7 @@ const { sdb, subs: [get] } = statedb(fallback_module)
 /******************************************************************************
   PAGE
 ******************************************************************************/
-const app = require('../src/node_modules/menu')
+const navbar = require('../src/node_modules/menu')
 const action_bar = require('../src/node_modules/action_bar')
 delete require.cache[require.resolve('../src/node_modules/search_bar')]
 const search_bar = require('../src/node_modules/search_bar')
@@ -1977,7 +1895,6 @@ const imports = {
   chat_history,
   tabbed_editor
 }
-const sheet = new CSSStyleSheet()
 config().then(() => boot({ sid: '' }))
 
 async function config () {
@@ -1996,7 +1913,6 @@ async function config () {
   // @TODO: use font api and cache to avoid re-downloading the font data every time
   document.head.append(meta)
   document.head.innerHTML += appleTouch + loadFont // + icon16 + icon32 + webmanifest
-  document.adoptedStyleSheets = [sheet]
   await document.fonts.ready // @TODO: investigate why there is a FOUC
 }
 /******************************************************************************
@@ -2007,7 +1923,7 @@ async function boot (opts) {
   // ID + JSON STATE
   // ----------------------------------------
   const on = {
-    theme: inject
+    style: inject
   }
   const subs = await sdb.watch(onbatch)
   // const status = {}
@@ -2015,39 +1931,162 @@ async function boot (opts) {
   // TEMPLATE
   // ----------------------------------------
   const el = document.body
-  const shopts = { mode: 'closed' }
-  const shadow = el.attachShadow(shopts)
-  shadow.adoptedStyleSheets = [sheet]
+  const shadow = el.attachShadow({ mode: 'closed' })
+
+  shadow.innerHTML = `
+  <div class="navbar-slot"></div>
+  <div class="components-wrapper-container">
+    <div class="components-wrapper"></div>
+  </div>`
+  el.style.margin = 0
   // ----------------------------------------
   // ELEMENTS
   // ----------------------------------------
-  // desktop
-  const view = document.createElement('div')
-  shadow.append(await menu(subs[1]), onmessage, view)
-  
-  function onmessage (msg) {
-    const { type, data } = msg
-    if (type === '???') {
-      const name = data
-      const [sid] = subs.filter(x => {
-        if (x.type === name) return x.sid
-      })
-      const el = imports[name](sid)
-      view.append(el)
+
+  const navbar_slot = shadow.querySelector('.navbar-slot')
+  const components_wrapper = shadow.querySelector('.components-wrapper')
+
+  const entries = Object.entries(imports)
+  const wrappers = []
+  const names = entries.map(([name]) => name)
+  let current_selected_wrapper = null
+
+  const url_params = new URLSearchParams(window.location.search)
+  const checked_param = url_params.get('checked')
+  const selected_name_param = url_params.get('selected')
+  let initial_checked_indices = []
+
+  if (checked_param) {
+    try {
+      const parsed = JSON.parse(checked_param)
+      if (Array.isArray(parsed) && parsed.every(Number.isInteger)) {
+        initial_checked_indices = parsed
+      } else {
+        console.warn('Invalid "checked" URL parameter format.')
+      }
+    } catch (e) {
+      console.error('Error parsing "checked" URL parameter:', e)
     }
   }
 
-  // ----------------------------------------
-  // INIT
-  // ----------------------------------------
+  const menu_callbacks = {
+    on_checkbox_change: handle_checkbox_change,
+    on_label_click: handle_label_click,
+    on_select_all_toggle: handle_select_all_toggle
+  }
+  const nav_menu_element = navbar(subs[names.length - 1], names, initial_checked_indices, menu_callbacks)
+  navbar_slot.replaceWith(nav_menu_element)
+
+  entries.forEach(create_component)
+  window.onload = scroll_to_initial_selected
+
+  return el
+  function create_component ([name, factory], index) {
+    const is_initially_checked = initial_checked_indices.length === 0 || initial_checked_indices.includes(index + 1)
+    const outer = document.createElement('div')
+    outer.className = 'component-outer-wrapper'
+    outer.style.display = is_initially_checked ? 'block' : 'none'
+    outer.innerHTML = `
+      <div class="component-name-label">${name}</div>
+      <div class="component-wrapper"></div>
+    `
+    const inner = outer.querySelector('.component-wrapper')
+    inner.append(factory(subs[index]))
+    components_wrapper.appendChild(outer)
+    wrappers[index] = { outer, inner, name, checkbox_state: is_initially_checked }
+  }
+
+  function scroll_to_initial_selected () {
+    if (selected_name_param) {
+      const index = names.indexOf(selected_name_param)
+      if (index !== -1 && wrappers[index]) {
+        const target_wrapper = wrappers[index].outer
+        if (target_wrapper.style.display !== 'none') {
+          setTimeout(() => {
+            target_wrapper.scrollIntoView({ behavior: 'auto', block: 'center' })
+            clear_selection_highlight()
+            target_wrapper.style.backgroundColor = 'lightblue'
+            current_selected_wrapper = target_wrapper
+          }, 100)
+        }
+      }
+    }
+  }
+
+  function clear_selection_highlight () {
+    if (current_selected_wrapper) {
+      current_selected_wrapper.style.backgroundColor = ''
+    }
+    current_selected_wrapper = null
+  }
+
+  function update_url (selected_name = url_params.get('selected')) {
+    const checked_indices = wrappers.reduce((acc, w, i) => {
+      if (w.checkbox_state) { acc.push(i + 1) }
+      return acc
+    }, [])
+    const params = new URLSearchParams()
+    if (checked_indices.length > 0 && checked_indices.length < wrappers.length) {
+      params.set('checked', JSON.stringify(checked_indices))
+    }
+    const selected_index = names.indexOf(selected_name)
+    if (selected_name && selected_index !== -1 && wrappers[selected_index]?.checkbox_state) {
+      params.set('selected', selected_name)
+    }
+    const new_url = `${window.location.pathname}${params.toString() ? '?' + params.toString() : ''}`
+    window.history.replaceState(null, '', new_url)
+  }
+
+  function handle_checkbox_change (detail) {
+    const { index, checked } = detail
+    if (wrappers[index]) {
+      wrappers[index].outer.style.display = checked ? 'block' : 'none'
+      wrappers[index].checkbox_state = checked
+      update_url()
+      if (!checked && current_selected_wrapper === wrappers[index].outer) {
+        clear_selection_highlight()
+        update_url(null)
+      }
+    }
+  }
+
+  function handle_label_click (detail) {
+    const { index, name } = detail
+    if (wrappers[index]) {
+      const target_wrapper = wrappers[index].outer
+      if (target_wrapper.style.display === 'none') {
+        target_wrapper.style.display = 'block'
+        wrappers[index].checkbox_state = true
+      }
+      target_wrapper.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      clear_selection_highlight()
+      target_wrapper.style.backgroundColor = 'lightblue'
+      current_selected_wrapper = target_wrapper
+      update_url(name)
+    }
+  }
+
+  function handle_select_all_toggle (detail) {
+    const { selectAll: select_all } = detail
+    wrappers.forEach((w, index) => {
+      w.outer.style.display = select_all ? 'block' : 'none'
+      w.checkbox_state = select_all
+    })
+    clear_selection_highlight()
+    update_url(null)
+  }
+
   function onbatch (batch) {
     for (const { type, data } of batch) {
       on[type] && on[type](data)
     }
   }
-}
-async function inject (data) {
-  sheet.replaceSync(data.join('\n'))
+
+  async function inject (data) {
+    const sheet = new CSSStyleSheet()
+    sheet.replaceSync(data)
+    shadow.adoptedStyleSheets = [sheet]
+  }
 }
 function fallback_module () {
   const menuname = '../src/node_modules/menu'
@@ -2056,17 +2095,66 @@ function fallback_module () {
     '../src/node_modules/search_bar',
     '../src/node_modules/chat_history',
     '../src/node_modules/graph_explorer',
-    '../src/node_modules/tabbed_editor',
+    '../src/node_modules/tabbed_editor'
   ]
   const subs = {}
-  names.forEach(name => (subs[name] = ''))
-  subs[menuname] = override
-  return { _: subs }
-  function override ([menu]) {
-    const data = menu()
-    data.drive['names.json'] = { raw: JSON.stringify(names) }
-    return data
+  const inst = {}
+  names.forEach(subgen)
+  subs[menuname] = { $: '' }
+  return {
+    api: fallback_instance,
+    _: subs
+  }
+  function fallback_instance () {
+    return {
+      _: inst,
+      drive: {
+        style: {
+          'theme.css': {
+            raw: `
+            .components-wrapper-container {
+              padding-top: 10px; /* Adjust as needed */
+            }
+        
+            .components-wrapper {
+              width: 95%;
+              margin: 0 auto;
+              padding: 2.5%;
+            }
+        
+            .component-outer-wrapper {
+              margin-bottom: 20px;
+              padding: 0px 0px 10px 0px;
+              transition: background-color 0.3s ease;
+            }
+        
+            .component-name-label {
+              background-color:transparent;
+              padding: 8px 15px;
+              text-align: center;
+              font-weight: bold;
+              color: #333;
+            }
+        
+            .component-wrapper {
+              padding: 15px;
+              border: 3px solid #666;
+              resize: both;
+              overflow: auto;
+              border-radius: 0px;
+              background-color: #ffffff;
+              min-height: 50px;
+            }`
+          }
+        }
+      }
+    }
+  }
+  function subgen (name) {
+    inst[name] = ''
+    subs[name] = { $: '' }
   }
 }
+
 }).call(this)}).call(this,"/web/page.js")
 },{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/chat_history":3,"../src/node_modules/graph_explorer":4,"../src/node_modules/menu":7,"../src/node_modules/search_bar":8,"../src/node_modules/tabbed_editor":9}]},{},[10]);
