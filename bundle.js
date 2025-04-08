@@ -11,7 +11,8 @@ const db = localdb()
  */
 // Constants and initial setup (global level)
 const VERSION = 10
-const ROOT_ID = 'page'
+const HELPER_MODULES = ['io', 'localdb', 'STATE']
+const fallback_post_error = '\nFor more info visit https://github.com/alyhxn/playproject/blob/main/doc/state/temp.md#defining-fallbacks'
 
 const status = {
   root_module: true, 
@@ -39,14 +40,14 @@ status.fallback_check && db.add(['playproject_version'], VERSION)
 // Symbol mappings
 const s2i = {}
 const i2s = {}
-let admins = [0, 'menu']
+let admins = [0]
 
 // Inner Function
-function STATE (address, modulepath) {
+function STATE (address, modulepath, dependencies) {
+  !status.ROOT_ID && (status.ROOT_ID = modulepath)
   status.modulepaths[modulepath] = 0
-  register_imports(modulepath, address)
   //Variables (module-level)
-
+  
   const local_status = {
     name: extract_filename(address),
     module_id: modulepath,
@@ -60,15 +61,21 @@ function STATE (address, modulepath) {
   function statedb (fallback) {
     const data = fallback()
     local_status.fallback_instance = data.api
-
     const super_id = modulepath.split(/>(?=[^>]*$)/)[0]
-
+    
     if(super_id === status.current_node){
       status.expected_imports[super_id].splice(status.expected_imports[super_id].indexOf(modulepath), 1)
     }
-    else if(status.current_node){
+    else if((status?.current_node?.split('>').length || 0) < super_id.split('>').length){
+      let temp = super_id
+      while(temp !== status.current_node && temp.includes('>')){
+        status.open_branches[temp] = 0
+        temp = temp.split(/>(?=[^>]*$)/)[0]
+      }
+    }
+    else{
       let temp = status.current_node
-      while(temp !== super_id){ 
+      while(temp !== super_id && temp.includes('>')){
         status.open_branches[temp] = 0
         temp = temp.split(/>(?=[^>]*$)/)[0]
       }
@@ -79,13 +86,14 @@ function STATE (address, modulepath) {
       status.expected_imports[modulepath] = Object.keys(data._)
       status.current_node = modulepath
     }
-    
 
     local_status.fallback_module = new Function(`return ${fallback.toString()}`)()
+    verify_imports(modulepath, dependencies, data)
     const updated_status = append_tree_node(modulepath, status)
     Object.assign(status.tree_pointers, updated_status.tree_pointers)
     Object.assign(status.open_branches, updated_status.open_branches)
     status.inits.push(init_module)
+    
     if(!Object.values(status.open_branches).reduce((acc, curr) => acc + curr, 0)){
       status.inits.forEach(init => init())
     }
@@ -114,7 +122,7 @@ function STATE (address, modulepath) {
         
         while(!status.tree_pointers[new_super_id]){
           [new_super_id, temp_name] = new_super_id.split(/>(?=[^>]*$)/)
-          new_name = temp_name + '.' + new_name
+          new_name = temp_name + '>' + new_name
         }
         status.tree_pointers[new_super_id]._[new_name] = { $: { _: {} } }
         status.tree_pointers[id] = status.tree_pointers[new_super_id]._[new_name].$
@@ -236,18 +244,21 @@ function STATE (address, modulepath) {
     let modulepath_super = modulepath.split(/\>(?=[^>]*$)/)[0]
     let modulepath_grand = modulepath_super.split(/\>(?=[^>]*$)/)[0]
     const split = modulepath.split('>')
-    const name = split.at(-2) + '.' + split.at(-1)
     let data
     const entries = {}
     if(xtype === 'module'){
-      while(!data){
+      let name = split.at(-1)
+      while(!data && modulepath_grand.includes('>')){
         data = db.read(['state', modulepath_super])
-        modulepath_grand = modulepath_super = modulepath_super.split(/\>(?=[^>]*$)/)[0]
+        const split = modulepath_super.split(/\>(?=[^>]*$)/)
+        modulepath_super = split[0]
+        name = split[1] + '>' + name
       }
-      data.path = data.id = modulepath
+      data.path = data.id = modulepath_super + '>' + name
+      modulepath = modulepath_super + '>' + name
       local_status.name = name
 
-      const super_data = db.read(['state', modulepath_grand])
+      const super_data = db.read(['state', modulepath_super])
       super_data.subs.forEach((sub_id, i) => {
         if(sub_id === modulepath_super){
           super_data.subs.splice(i, 1)
@@ -306,6 +317,7 @@ function STATE (address, modulepath) {
     }
     if(fun_status.overrides[pre_id]){
       fallback_data = fun_status.overrides[pre_id].fun[0](get_fallbacks({ fallback, modulename: local_status.name, modulepath, instance_path: pre_id }))
+      console.log('Override used: ', pre_id)
       fun_status.overrides[pre_id].by.splice(0, 1)
       fun_status.overrides[pre_id].fun.splice(0, 1)
     }
@@ -322,21 +334,20 @@ function STATE (address, modulepath) {
       updated_status: fun_status
     }
     
-    function sanitize_state ({ local_id, entry, path, hub_entry, local_tree, entries = {}, xtype, mapping }) {
-      [path, entry, local_tree] = extract_data({ local_id, entry, path, hub_entry, local_tree, xtype })
-      
-      entry.id = path
+    function sanitize_state ({ local_id, entry, path, hub_entry, local_tree, entries = {}, xtype, mapping, xkey }) {
+      [path, entry, local_tree] = extract_data({ local_id, entry, path, hub_entry, local_tree, xtype, xkey })
+
+      entry.id =  path
       entry.name = entry.name || local_id.split(':')[0] || local_status.name
       mapping && (entry.mapping = mapping)
       
       entries = {...entries, ...sanitize_subs({ local_id, entry, path, local_tree, xtype, mapping })}
-      
       delete entry._
       entries[entry.id] = entry
       // console.log('Entry: ', entry)
       return {entries, entry}
     }
-    function extract_data ({ local_id, entry, path, hub_entry, xtype }) {
+    function extract_data ({ local_id, entry, path, hub_entry, xtype, xkey }) {
       if (local_id) {
         entry.hubs = [hub_entry.id]
         if (xtype === 'instance') {
@@ -344,7 +355,7 @@ function STATE (address, modulepath) {
           temp_path = temp_path ? temp_path + '>' : temp_path
           const module_id = temp_path + local_id
           entry.type = module_id
-          path = module_id + ':' + (status.modulepaths[module_id]++ || 0)
+          path = module_id + ':' + xkey
         }
         else {
           entry.type = local_id
@@ -376,9 +387,9 @@ function STATE (address, modulepath) {
           //@TODO refactor when fallback structure improves
           Object.entries(entry._).forEach(([local_id, value]) => {
             Object.entries(value).forEach(([key, override]) => {
-              if(key === 'mapping' || typeof(override) === 'object')
+              if(key === 'mapping')
                 return
-              const sub_instance = sanitize_state({ local_id, entry: value, path, hub_entry: entry, local_tree, xtype: key === '$' ? 'module' : 'instance', mapping: value['mapping'] }).entry
+              const sub_instance = sanitize_state({ local_id, entry: value, path, hub_entry: entry, local_tree, xtype: key === '$' ? 'module' : 'instance', mapping: value['mapping'], xkey: key }).entry
               entries[sub_instance.id] = JSON.parse(JSON.stringify(sub_instance))
               entry.subs.push(sub_instance.id)
             })
@@ -488,7 +499,6 @@ function validate (data, xtype) {
     },
   }
 
-  
   validate_shape(data, expected_structure)
 
   function validate_shape (obj, expected, super_node = 'root', path = '') {
@@ -509,7 +519,7 @@ function validate (data, xtype) {
             if(expected_types.includes(type))
               type === 'object' && validate_shape(value, expected_value, expected_key_name, path + '/' + expected_key_name)
             else
-              throw new Error(`Type mismatch: Expected "${expected_types.join(' or ')}" got "${type}" for key "${expected_key_name}" at:` + path)
+              throw new Error(`Type mismatch: Expected "${expected_types.join(' or ')}" got "${type}" for key "${expected_key_name}" at:` + path + fallback_post_error)
           }
         })
       else{
@@ -525,9 +535,9 @@ function validate (data, xtype) {
       }
       if(absent && required){
         if(expected_key_names)
-          throw new Error(`Can't find required key "${expected_key_names.replace('|', ' or ')}" at: ` + path)
+          throw new Error(`Can't find required key "${expected_key_names.replace('|', ' or ')}" at: ` + path + fallback_post_error)
         else
-          throw new Error(`No subnodes found for super key "${super_node}" at sub: ` + path)
+          throw new Error(`No sub-nodes found for super key "${super_node}" at sub: ` + path + fallback_post_error)
       }
     })
   }
@@ -562,53 +572,41 @@ function add_source_code (hubs) {
     }
   })
 }
-async function register_imports (id, address) {
-  const code = await((await fetch(address)).text())
-  const regex = /require\(['"`](.*?)['"`]\)/g
-  let matches, modules = []
-
-  while ((matches = regex.exec(code)) !== null) {
-      modules.push(matches[1]) // Extract module name
-  }
-  status.imports[id] = modules
-  if(Object.keys(status.imports).length === Object.keys(status.modulepaths).length){
-    verify_imports()
-  }
-}
-function verify_imports () {
-  Object.entries(status.imports).some(([id, imports]) => {
-   const data = status.local_statuses[id].fallback_module()
-    if(!data._){
-      if(imports.length > 1)
-        throw new Error('No sub-nodes found for required modules in the fallback of '+status.local_statuses[id].module_id)
-      else return
+function verify_imports (id, imports, data) {
+  const state_address = imports.find(imp => imp.includes('STATE'))
+  HELPER_MODULES.push(state_address)
+  imports = imports.filter(imp => !HELPER_MODULES.includes(imp))
+  if(!data._){
+    if(imports.length > 1){
+      imports.splice(imports.indexOf(state_address), 1)
+      throw new Error(`No sub-nodes found for required modules "${imports.join(', ')}" in the fallback of "${status.local_statuses[id].module_id}"` + fallback_post_error)
     }
-    const fallback_imports = Object.keys(data._)
+    else return
+  }
+  const fallback_imports = Object.keys(data._)
 
-    imports.forEach(imp => {
-      let check = true
-      if(imp.includes('STATE'))
-        return
-      fallback_imports.forEach(fallimp => {
-        if(imp === fallimp)
-          check = false
-      })
-
-      if(check)
-        throw new Error('Required module "'+imp+'" is not defined in the fallback of '+status.local_statuses[id].module_id)
-    })
-
+  imports.forEach(imp => {
+    let check = true
     fallback_imports.forEach(fallimp => {
-      let check = true
-      imports.forEach(imp => {
-        if(imp === fallimp)
-          check = false
-      })
-      
-      if(check)
-        throw new Error('Module "'+fallimp+'" defined in the fallback of '+status.local_statuses[id].module_id+' is not required')
+      if(imp === fallimp)
+        check = false
     })
+
+    if(check)
+      throw new Error('Required module "'+imp+'" is not defined in the fallback of '+status.local_statuses[id].module_id + fallback_post_error)
   })
+  
+  fallback_imports.forEach(fallimp => {
+    let check = true
+    imports.forEach(imp => {
+      if(imp === fallimp)
+        check = false
+    })
+    
+    if(check)
+      throw new Error('Module "'+fallimp+'" defined in the fallback of '+status.local_statuses[id].module_id+' is not required')
+  })
+
 }
 function symbolfy (data) {
   const s2i = {}
@@ -656,7 +654,6 @@ function get_fallbacks ({ fallback, modulename, modulepath, instance_path }) {
     return data
 
     function merge_trees (data, path) {
-      console.log('data: ', data, path)
       if (data._) {
         Object.entries(data._).forEach(([type, data]) => merge_trees(data, path + '>' + type.split('$')[0].replace('.', '>')))
       } else {
@@ -676,13 +673,25 @@ function check_version () {
 function create_statedb_interface (local_status, node_id, xtype) {
   const api =  {
     public_api: {
-      watch, get_sub, req_access
+      watch, get_sub
     },
     private_api: {
-      get, register, swtch, unregister
+      xget: (id) => db.read(['state', id]),
+      get_all: () => db.read_all(['state']),
+      get,
+      register,
+      load: (snapshot) => {
+        localStorage.clear()
+        Object.entries(snapshot).forEach(([key, value]) => {
+          db.add([key], JSON.parse(value), true)
+        })
+        window.location.reload()
+      },
+      swtch,
+      unregister
     }
   }
-  api.public_api.admin = node_id === ROOT_ID && api.private_api
+  node_id === status.ROOT_ID && (api.public_api.admin = api.private_api)
   return api
 
   async function watch (listener) {
@@ -699,29 +708,8 @@ function create_statedb_interface (local_status, node_id, xtype) {
       return dad.type === type
     })
   }
-  function req_access (sid) {
-    if (local_status.deny[sid]) throw new Error('access denied')
-    const el = db.read(['state', s2i[sid]])
-    if (admins.includes(s2i[sid]) || admins.includes(el?.name)) {
-      return {
-        xget: (id) => db.read(['state', id]),
-        get_all: () => db.read_all(['state']),
-        add_admins: (ids) => { admins.push(...ids) },
-        get,
-        register,
-        load: (snapshot) => {
-          localStorage.clear()
-          Object.entries(snapshot).forEach(([key, value]) => {
-            db.add([key], JSON.parse(value), true)
-          })
-          window.location.reload()
-        },
-        swtch
-      }
-    }
-  }
-  function get (dataset_type, dataset_name) {
-    const node = db.read(['state', ROOT_ID])
+  function get ({ type: dataset_type, name: dataset_name } = {}) {
+    const node = db.read(['state', status.ROOT_ID])
     if(dataset_type){
       const dataset_list = []
       node.drive.forEach(dataset_id => {
@@ -730,7 +718,7 @@ function create_statedb_interface (local_status, node_id, xtype) {
           dataset_list.push(dataset.name)
       })
       if(dataset_name){
-        return recurse(ROOT_ID, dataset_type)
+        return recurse(status.ROOT_ID, dataset_type)
       }
       return dataset_list
     }
@@ -756,7 +744,7 @@ function create_statedb_interface (local_status, node_id, xtype) {
       return node_list
     }
   }
-  function register (dataset_type, dataset_name, dataset) {
+  function register ({ type: dataset_type, name: dataset_name, dataset}) {
     Object.entries(dataset).forEach(([node_id, files]) => {
       const new_dataset = { files: [] }
       Object.entries(files).forEach(([file_id, file]) => {
@@ -788,10 +776,10 @@ function create_statedb_interface (local_status, node_id, xtype) {
       db.push(['state', node_id, 'drive'], new_dataset.id)
       db.add(['state', new_dataset.id], new_dataset)
     })
-    return ' registered ' + dataset_name + '.' + dataset_type
+    console.log(' registered ' + dataset_name + '.' + dataset_type)
   }
-  function unregister (dataset_type, dataset_name) {
-    return recurse(ROOT_ID)
+  function unregister ({ type: dataset_type, name: dataset_name } = {}) {
+    return recurse(status.ROOT_ID)
 
     function recurse (node_id){
       const node = db.read(['state', node_id])
@@ -814,8 +802,8 @@ function create_statedb_interface (local_status, node_id, xtype) {
       node.subs.forEach(sub_id => recurse(sub_id))
     }
   }
-  function swtch (dataset_type, dataset_name = 'default') {
-    recurse(dataset_type, dataset_name, ROOT_ID)
+  function swtch ({ type: dataset_type, name: dataset_name = 'default'}) {
+    recurse(dataset_type, dataset_name, status.ROOT_ID)
 
     async function recurse (target_type, target_name, id) {
       const node = db.read(['state', id])
