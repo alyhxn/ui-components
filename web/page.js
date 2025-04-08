@@ -63,6 +63,8 @@ async function boot (opts) {
     <div class="components-wrapper"></div>
   </div>`
   el.style.margin = 0
+  const sheet = new CSSStyleSheet()
+  shadow.adoptedStyleSheets = [sheet]
   // ----------------------------------------
   // ELEMENTS
   // ----------------------------------------
@@ -98,14 +100,13 @@ async function boot (opts) {
     on_label_click: handle_label_click,
     on_select_all_toggle: handle_select_all_toggle
   }
-  const nav_menu_element = navbar(subs[names.length - 1], names, initial_checked_indices, menu_callbacks)
+  const nav_menu_element = await navbar(subs[names.length], names, initial_checked_indices, menu_callbacks)
   navbar_slot.replaceWith(nav_menu_element)
 
   entries.forEach(create_component)
   window.onload = scroll_to_initial_selected
-
   return el
-  function create_component ([name, factory], index) {
+  async function create_component ([name, factory], index) {
     const is_initially_checked = initial_checked_indices.length === 0 || initial_checked_indices.includes(index + 1)
     const outer = document.createElement('div')
     outer.className = 'component-outer-wrapper'
@@ -115,7 +116,7 @@ async function boot (opts) {
       <div class="component-wrapper"></div>
     `
     const inner = outer.querySelector('.component-wrapper')
-    inner.append(factory(subs[index]))
+    inner.append(await factory(subs[index]))
     components_wrapper.appendChild(outer)
     wrappers[index] = { outer, inner, name, checkbox_state: is_initially_checked }
   }
@@ -207,9 +208,8 @@ async function boot (opts) {
   }
 
   async function inject (data) {
-    const sheet = new CSSStyleSheet()
+    console.log(data)
     sheet.replaceSync(data)
-    shadow.adoptedStyleSheets = [sheet]
   }
 }
 function fallback_module () {
