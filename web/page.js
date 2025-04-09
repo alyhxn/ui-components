@@ -49,22 +49,18 @@ async function boot (opts) {
   const on = {
     style: inject
   }
-  const subs = await sdb.watch(onbatch)
   // const status = {}
   // ----------------------------------------
   // TEMPLATE
   // ----------------------------------------
   const el = document.body
   const shadow = el.attachShadow({ mode: 'closed' })
-
   shadow.innerHTML = `
   <div class="navbar-slot"></div>
   <div class="components-wrapper-container">
     <div class="components-wrapper"></div>
   </div>`
   el.style.margin = 0
-  const sheet = new CSSStyleSheet()
-  shadow.adoptedStyleSheets = [sheet]
   // ----------------------------------------
   // ELEMENTS
   // ----------------------------------------
@@ -100,9 +96,9 @@ async function boot (opts) {
     on_label_click: handle_label_click,
     on_select_all_toggle: handle_select_all_toggle
   }
+  const subs = await sdb.watch(onbatch)
   const nav_menu_element = await navbar(subs[names.length], names, initial_checked_indices, menu_callbacks)
   navbar_slot.replaceWith(nav_menu_element)
-
   entries.forEach(create_component)
   window.onload = scroll_to_initial_selected
   return el
@@ -207,9 +203,10 @@ async function boot (opts) {
     }
   }
 
-  async function inject (data) {
-    console.log(data)
+  function inject(data) {
+    const sheet = new CSSStyleSheet()
     sheet.replaceSync(data)
+    shadow.adoptedStyleSheets = [sheet]
   }
 }
 function fallback_module () {
@@ -222,60 +219,52 @@ function fallback_module () {
     '../src/node_modules/tabbed_editor'
   ]
   const subs = {}
-  const inst = {}
   names.forEach(subgen)
   subs[menuname] = { $: '' }
   return {
-    api: fallback_instance,
-    _: subs
-  }
-  function fallback_instance () {
-    return {
-      _: inst,
-      drive: {
-        style: {
-          'theme.css': {
-            raw: `
-            .components-wrapper-container {
-              padding-top: 10px; /* Adjust as needed */
-            }
-        
-            .components-wrapper {
-              width: 95%;
-              margin: 0 auto;
-              padding: 2.5%;
-            }
-        
-            .component-outer-wrapper {
-              margin-bottom: 20px;
-              padding: 0px 0px 10px 0px;
-              transition: background-color 0.3s ease;
-            }
-        
-            .component-name-label {
-              background-color:transparent;
-              padding: 8px 15px;
-              text-align: center;
-              font-weight: bold;
-              color: #333;
-            }
-        
-            .component-wrapper {
-              padding: 15px;
-              border: 3px solid #666;
-              resize: both;
-              overflow: auto;
-              border-radius: 0px;
-              background-color: #ffffff;
-              min-height: 50px;
-            }`
+    _: subs,
+    drive: {
+      style: {
+        'theme.css': {
+          raw: `
+          .components-wrapper-container {
+            padding-top: 10px; /* Adjust as needed */
           }
+      
+          .components-wrapper {
+            width: 95%;
+            margin: 0 auto;
+            padding: 2.5%;
+          }
+      
+          .component-outer-wrapper {
+            margin-bottom: 20px;
+            padding: 0px 0px 10px 0px;
+            transition: background-color 0.3s ease;
+          }
+      
+          .component-name-label {
+            background-color:transparent;
+            padding: 8px 15px;
+            text-align: center;
+            font-weight: bold;
+            color: #333;
+          }
+      
+          .component-wrapper {
+            padding: 15px;
+            border: 3px solid #666;
+            resize: both;
+            overflow: auto;
+            border-radius: 0px;
+            background-color: #ffffff;
+            min-height: 50px;
+          }`
         }
       }
     }
   }
   function subgen (name) {
-    inst[name] = ''
     subs[name] = { $: '' }
   }
 }
