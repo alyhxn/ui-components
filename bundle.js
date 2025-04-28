@@ -1818,6 +1818,88 @@ function fallback_module() {
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor.js")
 },{"STATE":1}],10:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { sdb, subs: [get] } = statedb(fallback_module)
+
+module.exports = component
+async function component(opts, btnobj = [
+  {
+    label: 'btn1',
+     icon: 'icon1',
+     callback : function func1(){ return console.log('btn1')}
+  },
+  {
+    label: 'btn2',
+     icon: 'icon2',
+      callback : function func2(){ return console.log('btn2')}
+  }
+]) {
+  const { id, sdb } = await get(opts.sid)
+  const on = {
+    style: inject
+  }
+  const div = document.createElement('div')
+  const shadow = div.attachShadow({ mode: 'closed' })
+  shadow.innerHTML = `
+  <div class="tabsbar">
+    <div class="tab-entries"></div>
+  </div>`
+  const entries = shadow.querySelector('.tab-entries')
+  btnobj.forEach(create_btn)
+  const subs = await sdb.watch(onbatch)
+  return div
+  async function create_btn ({icon, label, callback}) {
+    const el = document.createElement('div')
+    const reqico = await load_svg(`../../src/assets/icons/${icon}.svg`)
+    el.innerHTML = `
+    <span class="icon">${reqico}</span>
+    <span class="label">${label}</span>
+    <button class="btn">X</button>`
+    el.className = 'tabsbar-entry'
+    const icon_el = el.querySelector('.icon')
+    icon_el.onclick = callback
+    entries.appendChild(el)
+    return
+  }
+  async function load_svg(svg_url) {
+    const response = await fetch(svg_url)
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    const text_svg = await response.text()
+    return text_svg
+  }
+  function onbatch (batch) {
+    for (const { type, data } of batch) {
+      on[type] && on[type](data)
+    }
+  }
+  function inject(data) {
+    const sheet = new CSSStyleSheet()
+    sheet.replaceSync(data)
+    shadow.adoptedStyleSheets = [sheet]
+  }
+}
+function fallback_module() {
+  return {
+    api: fallback_instance,
+  }
+  function fallback_instance() {
+    return {
+      drive: {
+        style: {
+          'theme.css': {
+            raw: ``
+          }
+        }
+      }
+    }
+  }
+}
+}).call(this)}).call(this,"/src/node_modules/tabs.js")
+},{"STATE":1}],11:[function(require,module,exports){
 patch_cache_in_browser(arguments[4], arguments[5])
 
 function patch_cache_in_browser (source_cache, module_cache) {
@@ -1861,7 +1943,7 @@ function patch_cache_in_browser (source_cache, module_cache) {
   }
 }
 require('./page') // or whatever is otherwise the main entry of our project
-},{"./page":11}],11:[function(require,module,exports){
+},{"./page":12}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
@@ -1876,10 +1958,12 @@ const search_bar = require('../src/node_modules/search_bar')
 const graph_explorer = require('../src/node_modules/graph_explorer')
 const chat_history = require('../src/node_modules/chat_history')
 const tabbed_editor = require('../src/node_modules/tabbed_editor')
+const tabs = require('../src/node_modules/tabs')
 
 const imports = {
   action_bar,
   search_bar,
+  tabs,
   graph_explorer,
   chat_history,
   tabbed_editor
@@ -2079,6 +2163,7 @@ function fallback_module () {
   const names = [
     '../src/node_modules/action_bar',
     '../src/node_modules/search_bar',
+    '../src/node_modules/tabs',
     '../src/node_modules/chat_history',
     '../src/node_modules/graph_explorer',
     '../src/node_modules/tabbed_editor'
@@ -2135,4 +2220,4 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/chat_history":3,"../src/node_modules/graph_explorer":4,"../src/node_modules/menu":7,"../src/node_modules/search_bar":8,"../src/node_modules/tabbed_editor":9}]},{},[10]);
+},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/chat_history":3,"../src/node_modules/graph_explorer":4,"../src/node_modules/menu":7,"../src/node_modules/search_bar":8,"../src/node_modules/tabbed_editor":9,"../src/node_modules/tabs":10}]},{},[11]);

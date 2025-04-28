@@ -11,12 +11,12 @@ const search_bar = require('../src/node_modules/search_bar')
 const graph_explorer = require('../src/node_modules/graph_explorer')
 const chat_history = require('../src/node_modules/chat_history')
 const tabbed_editor = require('../src/node_modules/tabbed_editor')
-const tabsbar = require('../src/node_modules/tabsbar')
+const tabs = require('../src/node_modules/tabs')
 
 const imports = {
   action_bar,
   search_bar,
-  tabsbar,
+  tabs,
   graph_explorer,
   chat_history,
   tabbed_editor
@@ -216,7 +216,7 @@ function fallback_module () {
   const names = [
     '../src/node_modules/action_bar',
     '../src/node_modules/search_bar',
-    '../src/node_modules/tabsbar',
+    '../src/node_modules/tabs',
     '../src/node_modules/chat_history',
     '../src/node_modules/graph_explorer',
     '../src/node_modules/tabbed_editor'
