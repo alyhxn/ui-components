@@ -1,3 +1,4 @@
+localStorage.clear()
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
 const { sdb, subs: [get] } = statedb(fallback_module)
@@ -6,7 +7,6 @@ const { sdb, subs: [get] } = statedb(fallback_module)
 ******************************************************************************/
 const navbar = require('../src/node_modules/menu')
 const action_bar = require('../src/node_modules/action_bar')
-delete require.cache[require.resolve('../src/node_modules/search_bar')]
 const search_bar = require('../src/node_modules/search_bar')
 const graph_explorer = require('../src/node_modules/graph_explorer')
 const chat_history = require('../src/node_modules/chat_history')
@@ -17,8 +17,8 @@ const imports = {
   action_bar,
   search_bar,
   tabs,
-  graph_explorer,
   chat_history,
+  graph_explorer,
   tabbed_editor
 }
 config().then(() => boot({ sid: '' }))
@@ -27,7 +27,7 @@ async function config () {
   // const path = path => new URL(`../src/node_modules/${path}`, `file://${__dirname}`).href.slice(8)
   const html = document.documentElement
   const meta = document.createElement('meta')
-  const appleTouch = '<link rel="apple-touch-icon" sizes="180x180" href="./src/node_modules/assets/images/favicon/apple-touch-icon.png">'
+  // const appleTouch = '<link rel="apple-touch-icon" sizes="180x180" href="./src/node_modules/assets/images/favicon/apple-touch-icon.png">'
   // const icon32 = '<link rel="icon" type="image/png" sizes="32x32" href="./src/node_modules/assets/images/favicon/favicon-32x32.png">'
   // const icon16 = '<link rel="icon" type="image/png" sizes="16x16" href="./src/node_modules/assets/images/favicon/favicon-16x16.png">'
   // const webmanifest = '<link rel="manifest" href="./src/node_modules/assets/images/favicon/site.webmanifest"></link>'
@@ -38,7 +38,7 @@ async function config () {
   meta.setAttribute('content', 'width=device-width,initial-scale=1.0')
   // @TODO: use font api and cache to avoid re-downloading the font data every time
   document.head.append(meta)
-  document.head.innerHTML += appleTouch + loadFont // + icon16 + icon32 + webmanifest
+  document.head.innerHTML += loadFont // + icon16 + icon32 + webmanifest
   await document.fonts.ready // @TODO: investigate why there is a FOUC
 }
 /******************************************************************************
@@ -223,11 +223,25 @@ function fallback_module () {
   ]
   const subs = {}
   names.forEach(subgen)
-  subs[menuname] = { $: '' }
+  subs[menuname] = { 
+    $: '',
+    mapping: {
+      'style': 'style',
+    }
+  }
+  subs['../src/node_modules/tabs'] = {
+    $: '',
+    mapping: {
+      'icons': 'icons',
+      'variables': 'variables',
+      'style': 'style'
+    }
+  }
+  console.log('subs', subs)
   return {
     _: subs,
     drive: {
-      style: {
+      'style/': {
         'theme.css': {
           raw: `
           .components-wrapper-container {
@@ -268,6 +282,11 @@ function fallback_module () {
     }
   }
   function subgen (name) {
-    subs[name] = { $: '' }
+    subs[name] = {
+      $: '',
+      mapping: {
+        'style': 'style',
+      }
+    }
   }
 }
