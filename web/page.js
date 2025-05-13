@@ -1,7 +1,7 @@
 localStorage.clear()
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
-const { sdb, subs: [get] } = statedb(fallback_module)
+const { sdb, get } = statedb(fallback_module)
 /******************************************************************************
   PAGE
 ******************************************************************************/
@@ -99,6 +99,8 @@ async function boot (opts) {
     on_select_all_toggle: handle_select_all_toggle
   }
   const subs = await sdb.watch(onbatch)
+  console.log(`page subs: `, subs)
+  const { style } = subs['../src/node_modules/menu']
   const nav_menu_element = await navbar(subs[names.length], names, initial_checked_indices, menu_callbacks)
   navbar_slot.replaceWith(nav_menu_element)
   entries.forEach(create_component)
@@ -114,7 +116,8 @@ async function boot (opts) {
       <div class="component-wrapper"></div>
     `
     const inner = outer.querySelector('.component-wrapper')
-    inner.append(await factory(subs[index]))
+    if(index === 0) inner.append(await factory(subs[1]))
+    else inner.append(await factory(subs[index + 2]))
     components_wrapper.appendChild(outer)
     wrappers[index] = { outer, inner, name, checkbox_state: is_initially_checked }
   }
@@ -225,12 +228,14 @@ function fallback_module () {
   names.forEach(subgen)
   subs[menuname] = { 
     $: '',
+    0: '',
     mapping: {
       'style': 'style',
     }
   }
   subs['../src/node_modules/tabs'] = {
     $: '',
+    0: '',
     mapping: {
       'icons': 'icons',
       'variables': 'variables',
@@ -284,6 +289,7 @@ function fallback_module () {
   function subgen (name) {
     subs[name] = {
       $: '',
+      0: '',
       mapping: {
         'style': 'style',
       }
