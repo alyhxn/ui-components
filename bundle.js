@@ -1156,9 +1156,8 @@ async function boot (opts) {
     on_label_click: handle_label_click,
     on_select_all_toggle: handle_select_all_toggle
   }
-  const subs = await sdb.watch(onbatch)
-  console.log(`page subs: `, subs)
-  const { style } = subs['../src/node_modules/menu']
+  const subs = (await sdb.watch(onbatch)).filter((_, index) => index % 2 === 0)
+  console.log('subs', subs)
   const nav_menu_element = await navbar(subs[names.length], names, initial_checked_indices, menu_callbacks)
   navbar_slot.replaceWith(nav_menu_element)
   entries.forEach(create_component)
@@ -1174,8 +1173,7 @@ async function boot (opts) {
       <div class="component-wrapper"></div>
     `
     const inner = outer.querySelector('.component-wrapper')
-    if(index === 0) inner.append(await factory(subs[1]))
-    else inner.append(await factory(subs[index + 2]))
+    inner.append(await factory(subs[index]))
     components_wrapper.appendChild(outer)
     wrappers[index] = { outer, inner, name, checkbox_state: is_initially_checked }
   }
@@ -1284,13 +1282,6 @@ function fallback_module () {
   ]
   const subs = {}
   names.forEach(subgen)
-  subs[menuname] = { 
-    $: '',
-    0: '',
-    mapping: {
-      'style': 'style',
-    }
-  }
   subs['../src/node_modules/tabs'] = {
     $: '',
     0: '',
@@ -1298,6 +1289,13 @@ function fallback_module () {
       'icons': 'icons',
       'variables': 'variables',
       'style': 'style'
+    }
+  }
+  subs[menuname] = { 
+    $: '',
+    0: '',
+    mapping: {
+      'style': 'style',
     }
   }
   console.log('subs', subs)
