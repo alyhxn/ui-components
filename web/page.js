@@ -8,15 +8,17 @@ const { sdb, get } = statedb(fallback_module)
 const navbar = require('../src/node_modules/menu')
 const action_bar = require('../src/node_modules/action_bar')
 const search_bar = require('../src/node_modules/search_bar')
-const graph_explorer = require('../src/node_modules/graph_explorer')
-const chat_history = require('../src/node_modules/chat_history')
-const tabbed_editor = require('../src/node_modules/tabbed_editor')
 const tabs = require('../src/node_modules/tabs')
+const tabsbar = require('../src/node_modules/tabsbar')
+const chat_history = require('../src/node_modules/chat_history')
+const graph_explorer = require('../src/node_modules/graph_explorer')
+const tabbed_editor = require('../src/node_modules/tabbed_editor')
 
 const imports = {
   action_bar,
   search_bar,
   tabs,
+  tabsbar,
   chat_history,
   graph_explorer,
   tabbed_editor
@@ -218,6 +220,7 @@ function fallback_module () {
     '../src/node_modules/action_bar',
     '../src/node_modules/search_bar',
     '../src/node_modules/tabs',
+    '../src/node_modules/tabsbar',
     '../src/node_modules/chat_history',
     '../src/node_modules/graph_explorer',
     '../src/node_modules/tabbed_editor'
@@ -233,6 +236,15 @@ function fallback_module () {
       'style': 'style'
     }
   }
+  // subs['../src/node_modules/tabbed_editor'] = {
+  //   $: '',
+  //   0: '',
+  //   mapping: {
+  //     'tabs_config': 'tabs_config',
+  //     'file_content': 'file_content',
+  //     'style': 'style'
+  //   }
+  // }
   subs[menuname] = { 
     $: '',
     0: '',
@@ -240,7 +252,6 @@ function fallback_module () {
       'style': 'style',
     }
   }
-  console.log('subs', subs)
   return {
     _: subs,
     drive: {

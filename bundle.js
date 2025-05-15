@@ -11,7 +11,7 @@ const search_bar = require('search_bar')
 
 module.exports = action_bar
 
-async function action_bar (opts = '') {
+async function action_bar (opts) {
   const { id, sdb } = await get(opts.sid)
   const on = {
     style: inject
@@ -60,7 +60,7 @@ function fallback_module () {
     api: fallback_instance,
     _: {
       search_bar: {
-        $: ([app]) => app()
+        $: ''
       },
       icons: {
         $: ''
@@ -944,49 +944,26 @@ function fallback_module() {
   function fallback_instance() {
     return {
       drive: {
-        icons: {
+        'icons/': {
           'cross.svg':{
-            raw: 
-            `<svg class="btn" width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <g clip-path="url(#clip0_1463_3695)">
-            <path d="M10.5 3.5L3.5 10.5" stroke="#A6A6A6" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M3.5 3.5L10.5 10.5" stroke="#A6A6A6" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-            </g>
-            <defs>
-            <clipPath id="clip0_1463_3695">
-            <rect width="14" height="14" fill="white"/>
-            </clipPath>
-            </defs>
-            </svg>`
+            '$ref': 'cross.svg'
           },
           '1.svg': {
-            raw: `<svg width="19" height="19" viewBox="0 0 19 19" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M9.30078 0.351562C9.64362 0.257059 10.0075 0.41754 10.1689 0.734375L10.2002 0.804688L10.2012 0.806641L14.9297 13.4746C15.6501 13.6286 16.5509 13.8696 17.2842 14.2246C17.6644 14.4087 18.0083 14.6273 18.2588 14.8867C18.5108 15.1476 18.6748 15.4579 18.6748 15.8174C18.6747 16.3309 18.3337 16.7589 17.8125 17.1064C17.2887 17.4557 16.5531 17.7452 15.6914 17.9756C13.9659 18.4369 11.696 18.6748 9.5 18.6748C7.30384 18.6748 5.03327 18.437 3.30762 17.9756C2.44588 17.7452 1.71036 17.4557 1.18652 17.1064C0.665391 16.7589 0.324333 16.3309 0.324219 15.8174L0.332031 15.6846C0.366904 15.3809 0.520732 15.115 0.741211 14.8867C0.991742 14.6275 1.33571 14.4086 1.71582 14.2246C2.44857 13.87 3.34834 13.6296 4.06836 13.4756L8.79688 0.80957L8.8291 0.736328C8.91244 0.571987 9.05409 0.44336 9.22754 0.375977L9.30078 0.351562ZM15.5254 15.0713H15.5264C15.5294 15.0791 15.5324 15.0869 15.5352 15.0947L15.5566 15.1689C15.6444 15.5396 15.4389 15.9242 15.0713 16.0518L15.0674 16.0527C13.2683 16.6242 11.3884 16.8986 9.50098 16.8682L9.50195 16.8691L9.49902 16.8682L9.49707 16.8691V16.8682C7.61 16.8985 5.7304 16.6241 3.93164 16.0527L3.92773 16.0518L3.90234 16.042C3.53972 15.901 3.34893 15.5097 3.4502 15.1426L3.47363 15.0693L3.68945 14.4893C2.85761 14.7018 2.24878 14.9437 1.8418 15.1797C1.61636 15.3104 1.45822 15.4363 1.3584 15.5498C1.25773 15.6643 1.22656 15.7546 1.22656 15.8174C1.22664 15.8804 1.25554 15.963 1.33984 16.0645C1.42399 16.1656 1.55552 16.2755 1.73828 16.3896C2.10391 16.6181 2.65266 16.8495 3.37207 17.0557C4.80922 17.4675 6.90121 17.7725 9.5 17.7725C12.0986 17.7724 14.1899 17.4675 15.627 17.0557C16.3464 16.8495 16.8951 16.6181 17.2607 16.3896C17.4435 16.2755 17.575 16.1656 17.6592 16.0645C17.7435 15.963 17.7724 15.8804 17.7725 15.8174C17.7725 15.7546 17.7413 15.6643 17.6406 15.5498C17.5408 15.4363 17.3827 15.3105 17.1572 15.1797C16.7501 14.9435 16.1409 14.702 15.3086 14.4893L15.5254 15.0713ZM4.37109 15.2393C6.03024 15.7517 7.76019 15.9993 9.49707 15.9678H9.50195L10.1729 15.9658C11.6834 15.9305 13.1817 15.6851 14.6279 15.2422L14.2998 14.3643C12.7446 14.8392 11.1266 15.0757 9.5 15.0635L9.50098 15.0645L9.49902 15.0635L9.49805 15.0645V15.0635C7.87169 15.0757 6.25406 14.8385 4.69922 14.3633L4.37109 15.2393ZM5.01367 13.5176C6.46761 13.9558 7.97893 14.175 9.49805 14.1631H9.50098L10.0898 14.1562C11.4101 14.1156 12.7194 13.8999 13.9854 13.5186L9.49902 1.5L5.01367 13.5176Z" fill="#A6A6A6" stroke="#A6A6A6" stroke-width="0.3"/>
-            </svg>`
+            '$ref': 'icon.svg'
           },
           '2.svg': {
-            raw: `
-            <svg width="19" height="19" viewBox="0 0 19 19" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M9.30078 0.351562C9.64362 0.257059 10.0075 0.41754 10.1689 0.734375L10.2002 0.804688L10.2012 0.806641L14.9297 13.4746C15.6501 13.6286 16.5509 13.8696 17.2842 14.2246C17.6644 14.4087 18.0083 14.6273 18.2588 14.8867C18.5108 15.1476 18.6748 15.4579 18.6748 15.8174C18.6747 16.3309 18.3337 16.7589 17.8125 17.1064C17.2887 17.4557 16.5531 17.7452 15.6914 17.9756C13.9659 18.4369 11.696 18.6748 9.5 18.6748C7.30384 18.6748 5.03327 18.437 3.30762 17.9756C2.44588 17.7452 1.71036 17.4557 1.18652 17.1064C0.665391 16.7589 0.324333 16.3309 0.324219 15.8174L0.332031 15.6846C0.366904 15.3809 0.520732 15.115 0.741211 14.8867C0.991742 14.6275 1.33571 14.4086 1.71582 14.2246C2.44857 13.87 3.34834 13.6296 4.06836 13.4756L8.79688 0.80957L8.8291 0.736328C8.91244 0.571987 9.05409 0.44336 9.22754 0.375977L9.30078 0.351562ZM15.5254 15.0713H15.5264C15.5294 15.0791 15.5324 15.0869 15.5352 15.0947L15.5566 15.1689C15.6444 15.5396 15.4389 15.9242 15.0713 16.0518L15.0674 16.0527C13.2683 16.6242 11.3884 16.8986 9.50098 16.8682L9.50195 16.8691L9.49902 16.8682L9.49707 16.8691V16.8682C7.61 16.8985 5.7304 16.6241 3.93164 16.0527L3.92773 16.0518L3.90234 16.042C3.53972 15.901 3.34893 15.5097 3.4502 15.1426L3.47363 15.0693L3.68945 14.4893C2.85761 14.7018 2.24878 14.9437 1.8418 15.1797C1.61636 15.3104 1.45822 15.4363 1.3584 15.5498C1.25773 15.6643 1.22656 15.7546 1.22656 15.8174C1.22664 15.8804 1.25554 15.963 1.33984 16.0645C1.42399 16.1656 1.55552 16.2755 1.73828 16.3896C2.10391 16.6181 2.65266 16.8495 3.37207 17.0557C4.80922 17.4675 6.90121 17.7725 9.5 17.7725C12.0986 17.7724 14.1899 17.4675 15.627 17.0557C16.3464 16.8495 16.8951 16.6181 17.2607 16.3896C17.4435 16.2755 17.575 16.1656 17.6592 16.0645C17.7435 15.963 17.7724 15.8804 17.7725 15.8174C17.7725 15.7546 17.7413 15.6643 17.6406 15.5498C17.5408 15.4363 17.3827 15.3105 17.1572 15.1797C16.7501 14.9435 16.1409 14.702 15.3086 14.4893L15.5254 15.0713ZM4.37109 15.2393C6.03024 15.7517 7.76019 15.9993 9.49707 15.9678H9.50195L10.1729 15.9658C11.6834 15.9305 13.1817 15.6851 14.6279 15.2422L14.2998 14.3643C12.7446 14.8392 11.1266 15.0757 9.5 15.0635L9.50098 15.0645L9.49902 15.0635L9.49805 15.0645V15.0635C7.87169 15.0757 6.25406 14.8385 4.69922 14.3633L4.37109 15.2393ZM5.01367 13.5176C6.46761 13.9558 7.97893 14.175 9.49805 14.1631H9.50098L10.0898 14.1562C11.4101 14.1156 12.7194 13.8999 13.9854 13.5186L9.49902 1.5L5.01367 13.5176Z" fill="#A6A6A6" stroke="#A6A6A6" stroke-width="0.3"/>
-            </svg>`
+            '$ref': 'icon.svg'
           },
           '3.svg': {
-            raw: `
-            <svg width="19" height="19" viewBox="0 0 19 19" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M9.30078 0.351562C9.64362 0.257059 10.0075 0.41754 10.1689 0.734375L10.2002 0.804688L10.2012 0.806641L14.9297 13.4746C15.6501 13.6286 16.5509 13.8696 17.2842 14.2246C17.6644 14.4087 18.0083 14.6273 18.2588 14.8867C18.5108 15.1476 18.6748 15.4579 18.6748 15.8174C18.6747 16.3309 18.3337 16.7589 17.8125 17.1064C17.2887 17.4557 16.5531 17.7452 15.6914 17.9756C13.9659 18.4369 11.696 18.6748 9.5 18.6748C7.30384 18.6748 5.03327 18.437 3.30762 17.9756C2.44588 17.7452 1.71036 17.4557 1.18652 17.1064C0.665391 16.7589 0.324333 16.3309 0.324219 15.8174L0.332031 15.6846C0.366904 15.3809 0.520732 15.115 0.741211 14.8867C0.991742 14.6275 1.33571 14.4086 1.71582 14.2246C2.44857 13.87 3.34834 13.6296 4.06836 13.4756L8.79688 0.80957L8.8291 0.736328C8.91244 0.571987 9.05409 0.44336 9.22754 0.375977L9.30078 0.351562ZM15.5254 15.0713H15.5264C15.5294 15.0791 15.5324 15.0869 15.5352 15.0947L15.5566 15.1689C15.6444 15.5396 15.4389 15.9242 15.0713 16.0518L15.0674 16.0527C13.2683 16.6242 11.3884 16.8986 9.50098 16.8682L9.50195 16.8691L9.49902 16.8682L9.49707 16.8691V16.8682C7.61 16.8985 5.7304 16.6241 3.93164 16.0527L3.92773 16.0518L3.90234 16.042C3.53972 15.901 3.34893 15.5097 3.4502 15.1426L3.47363 15.0693L3.68945 14.4893C2.85761 14.7018 2.24878 14.9437 1.8418 15.1797C1.61636 15.3104 1.45822 15.4363 1.3584 15.5498C1.25773 15.6643 1.22656 15.7546 1.22656 15.8174C1.22664 15.8804 1.25554 15.963 1.33984 16.0645C1.42399 16.1656 1.55552 16.2755 1.73828 16.3896C2.10391 16.6181 2.65266 16.8495 3.37207 17.0557C4.80922 17.4675 6.90121 17.7725 9.5 17.7725C12.0986 17.7724 14.1899 17.4675 15.627 17.0557C16.3464 16.8495 16.8951 16.6181 17.2607 16.3896C17.4435 16.2755 17.575 16.1656 17.6592 16.0645C17.7435 15.963 17.7724 15.8804 17.7725 15.8174C17.7725 15.7546 17.7413 15.6643 17.6406 15.5498C17.5408 15.4363 17.3827 15.3105 17.1572 15.1797C16.7501 14.9435 16.1409 14.702 15.3086 14.4893L15.5254 15.0713ZM4.37109 15.2393C6.03024 15.7517 7.76019 15.9993 9.49707 15.9678H9.50195L10.1729 15.9658C11.6834 15.9305 13.1817 15.6851 14.6279 15.2422L14.2998 14.3643C12.7446 14.8392 11.1266 15.0757 9.5 15.0635L9.50098 15.0645L9.49902 15.0635L9.49805 15.0645V15.0635C7.87169 15.0757 6.25406 14.8385 4.69922 14.3633L4.37109 15.2393ZM5.01367 13.5176C6.46761 13.9558 7.97893 14.175 9.49805 14.1631H9.50098L10.0898 14.1562C11.4101 14.1156 12.7194 13.8999 13.9854 13.5186L9.49902 1.5L5.01367 13.5176Z" fill="#A6A6A6" stroke="#A6A6A6" stroke-width="0.3"/>
-            </svg>`
+            '$ref': 'icon.svg'
           }
         },
-        variables: {
+        'variables/': {
           'tabs.json': {
-            raw: [
-              { name: 'Home',id: '0:' },
-              { name: 'Settings', id: '1:' },
-              { name: 'Profile', id: '2:' },
-            ]
+            '$ref': 'tabs.json'
           }
         },
-        style: {
+        'style/': {
           'theme.css': {
             raw: `
             .tab-entries {
@@ -1041,8 +1018,70 @@ function fallback_module() {
     }
   }
 }
-}).call(this)}).call(this,"/src/node_modules/tabs.js")
+}).call(this)}).call(this,"/src/node_modules/tabs/index.js")
 },{"STATE":1}],10:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { sdb, get } = statedb(fallback_module)
+
+module.exports = graph_explorer
+async function graph_explorer(opts) {
+  const { id, sdb } = await get(opts.sid)
+  const on = {
+    style: inject
+  }
+  const div = document.createElement('div')
+  const shadow = div.attachShadow({ mode: 'closed' })
+  shadow.innerHTML = `<h1>Tabs-bar</h1>`
+  shadow.querySelector('h1').className = 'text'
+  const subs = await sdb.watch(onbatch)
+  return div
+  function onbatch (batch) {
+    for (const { type, data } of batch) {
+      on[type] && on[type](data)
+    }
+  }
+  function inject(data) {
+    const sheet = new CSSStyleSheet()
+    sheet.replaceSync(data)
+    shadow.adoptedStyleSheets = [sheet]
+  }
+}
+function fallback_module() {
+  return {
+    api: fallback_instance,
+  }
+  function fallback_instance() {
+    return {
+      drive: {
+        style: {
+          'theme.css': {
+            raw: `
+              .text {
+                color: #D8DEE9;
+                background-color: #2E3440;
+                padding: 1rem;
+                border-left: 4px solid #81A1C1;
+                line-height: 1.6;
+                box-shadow: 0 2px 5px rgba(46, 52, 64, 0.5);
+                transition: background-color 0.3s ease, color 0.3s ease;
+              }
+              
+              .text:hover {
+                color: #88C0D0;
+                background-color: #3B4252;
+              }
+            `
+          }
+        }
+      }
+    }
+  }
+}
+
+}).call(this)}).call(this,"/src/node_modules/tabsbar.js")
+},{"STATE":1}],11:[function(require,module,exports){
 const init_url = location.hash === '#dev' ? '/doc/state/example/init.js' : 'https://raw.githubusercontent.com/alyhxn/playproject/refs/heads/main/doc/state/example/init.js'
 const args = arguments
 
@@ -1054,7 +1093,7 @@ fetch(init_url, { cache: "no-store" }).then(res => res.text()).then(async source
   await init(args) 
   require('./page') // or whatever is otherwise the main entry of our project
 })
-},{"./page":11}],11:[function(require,module,exports){
+},{"./page":12}],12:[function(require,module,exports){
 (function (__filename){(function (){
 localStorage.clear()
 const STATE = require('../src/node_modules/STATE')
@@ -1066,15 +1105,17 @@ const { sdb, get } = statedb(fallback_module)
 const navbar = require('../src/node_modules/menu')
 const action_bar = require('../src/node_modules/action_bar')
 const search_bar = require('../src/node_modules/search_bar')
-const graph_explorer = require('../src/node_modules/graph_explorer')
-const chat_history = require('../src/node_modules/chat_history')
-const tabbed_editor = require('../src/node_modules/tabbed_editor')
 const tabs = require('../src/node_modules/tabs')
+const tabsbar = require('../src/node_modules/tabsbar')
+const chat_history = require('../src/node_modules/chat_history')
+const graph_explorer = require('../src/node_modules/graph_explorer')
+const tabbed_editor = require('../src/node_modules/tabbed_editor')
 
 const imports = {
   action_bar,
   search_bar,
   tabs,
+  tabsbar,
   chat_history,
   graph_explorer,
   tabbed_editor
@@ -1276,6 +1317,7 @@ function fallback_module () {
     '../src/node_modules/action_bar',
     '../src/node_modules/search_bar',
     '../src/node_modules/tabs',
+    '../src/node_modules/tabsbar',
     '../src/node_modules/chat_history',
     '../src/node_modules/graph_explorer',
     '../src/node_modules/tabbed_editor'
@@ -1291,6 +1333,15 @@ function fallback_module () {
       'style': 'style'
     }
   }
+  // subs['../src/node_modules/tabbed_editor'] = {
+  //   $: '',
+  //   0: '',
+  //   mapping: {
+  //     'tabs_config': 'tabs_config',
+  //     'file_content': 'file_content',
+  //     'style': 'style'
+  //   }
+  // }
   subs[menuname] = { 
     $: '',
     0: '',
@@ -1298,7 +1349,6 @@ function fallback_module () {
       'style': 'style',
     }
   }
-  console.log('subs', subs)
   return {
     _: subs,
     drive: {
@@ -1354,4 +1404,4 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/chat_history":3,"../src/node_modules/graph_explorer":4,"../src/node_modules/menu":6,"../src/node_modules/search_bar":7,"../src/node_modules/tabbed_editor":8,"../src/node_modules/tabs":9}]},{},[10]);
+},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/chat_history":3,"../src/node_modules/graph_explorer":4,"../src/node_modules/menu":6,"../src/node_modules/search_bar":7,"../src/node_modules/tabbed_editor":8,"../src/node_modules/tabs":9,"../src/node_modules/tabsbar":10}]},{},[11]);
