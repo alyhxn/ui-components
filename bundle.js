@@ -875,12 +875,11 @@ const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 module.exports = component
-async function component(opts, callback) {
+async function component(opts, callback = id => console.log('calling:', '@' + id)) {
   const { id, sdb } = await get(opts.sid)
   const on = {
     variables: onvariables,
-    style: inject,
-    icons: iconject
+    style: inject
   }
   const div = document.createElement('div')
   const shadow = div.attachShadow({ mode: 'closed' })
@@ -888,39 +887,102 @@ async function component(opts, callback) {
   const entries = shadow.querySelector('.tab-entries')
   let dricons = {}
   const subs = await sdb.watch(onbatch)
+  if (entries) {
+    let is_down = false
+    let start_x
+    let scroll_left_start
+
+    entries.onmousedown = (e) => {
+      if (entries.scrollWidth <= entries.clientWidth) return
+
+      is_down = true
+      entries.classList.add('grabbing')
+      start_x = e.pageX - entries.offsetLeft
+      scroll_left_start = entries.scrollLeft
+    }
+
+    entries.onmouseleave = () => {
+      if (!is_down) return
+      is_down = false
+      entries.classList.remove('grabbing')
+    }
+
+    window.onmouseup = () => {
+      if (!is_down) return
+      is_down = false
+      entries.classList.remove('grabbing')
+    }
+
+    entries.onmousemove = (e) => {
+      if (!is_down) return
+
+      if (entries.scrollWidth <= entries.clientWidth) {
+        is_down = false
+        entries.classList.remove('grabbing')
+        return
+      }
+
+      e.preventDefault()
+
+      const x = e.pageX - entries.offsetLeft
+      const walk = (x - start_x) * 1.5
+      entries.scrollLeft = scroll_left_start - walk
+    }
+
+    entries.ontouchstart = (e) => {
+      if (entries.scrollWidth <= entries.clientWidth) return
+
+      is_down = true
+      start_x = e.touches[0].pageX - entries.offsetLeft
+      scroll_left_start = entries.scrollLeft
+    }
+
+    entries.ontouchend = () => {
+      if (!is_down) return
+      is_down = false
+    }
+
+    entries.ontouchcancel = () => {
+      if (!is_down) return
+      is_down = false
+    }
+
+    entries.ontouchmove = (e) => {
+      if (!is_down) return
+
+      if (entries.scrollWidth <= entries.clientWidth) {
+        is_down = false
+        return
+      }
+
+      e.preventDefault()
+      const x = e.touches[0].pageX - entries.offsetLeft
+      const walk = (x - start_x) * 1.5
+      entries.scrollLeft = scroll_left_start - walk
+    }
+  }
   return div
   async function create_btn ({name, id},index) {
     const el = document.createElement('div')
     el.innerHTML = `
-    <span class="icon">${dricons[index + 1]}</span>
-    <span class='name'>${id}</span>
+    <div class="first-half">
+      <span class="icon">${dricons[index + 1]}</span>
+      <span class="name">${id}</span>
+    </div>
     <span class="name">${name}</span>
     <button class="btn">${dricons[0]}</button>`
 
     el.className = 'tabsbtn'
-    const icon_el = el.querySelector('.icon')
+    const first_half = el.querySelector('.first-half')
     const label_el = el.querySelector('.name')
 
     label_el.draggable = false
-    icon_el.onclick = callback
-    entries.onwheel = (e) => {
-      if(entries.scrollWidth > entries.clientWidth) {
-      e.preventDefault()
-      entries.scrollLeft += e.deltaY/20
-      }
-    }
+    first_half.onclick = exec => callback(id + name)
     entries.appendChild(el)
     return
   }
-  async function load_svg(svg_url) {
-    const response = await fetch(svg_url)
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-    const text_svg = await response.text()
-    return text_svg
-  }
   function onbatch (batch) {
+    iconject(batch[2].data)
     for (const { type, data } of batch) {
       on[type] && on[type](data)
     }
@@ -930,11 +992,16 @@ async function component(opts, callback) {
     sheet.replaceSync(data)
     shadow.adoptedStyleSheets = [sheet]
   }
-  function onvariables (data) {
-    data[0].forEach( create_btn)
-  }
   function iconject(data) {
     dricons = data
+  }
+  function onvariables (data) {
+    if(typeof data[0] === 'string') {
+      const variables = JSON.parse(data[0])
+      variables.forEach(create_btn)
+      return
+    }
+    data[0].forEach(create_btn)
   }
 }
 function fallback_module() {
@@ -963,55 +1030,9 @@ function fallback_module() {
             '$ref': 'tabs.json'
           }
         },
-        'style/': {
+        style: {
           'theme.css': {
-            raw: `
-            .tab-entries {
-              display: flex;
-              flex-direction: row;
-              justify-content: flex-start;
-              align-items: center;
-              align-content: center;
-              flex-wrap: nowrap;
-              overflow-x: hidden;
-              background-color: #131315;
-              column-gap: 14px;
-              padding: 10px 2px;
-            }
-            .tabsbtn {
-              display: flex;
-              flex-direction: row;
-              flex-wrap: nowrap;
-              align-items: center;
-              background-color: #191919;
-              padding: 8px 14px;
-              border-radius: 30px;
-            }
-            .icon {
-              margin-right: 5px;
-            }
-            .name {
-              font-size: 14px;
-              margin-right: 5px;
-              user-select: none;
-              color: #a6a6a6;
-            }
-            .btn {
-              border: none;
-              display: flex;
-              padding: 0;
-              background-color: transparent;
-              color: #ffffff;
-            }
-            svg.btn{
-              width: 25px;
-              height: 25px;
-            }
-            svg{
-              width: 20px;
-              height: 20px;
-            }
-            `
+            '$ref': 'style.css'
           }
         }
       }
@@ -1025,63 +1046,117 @@ const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 
-module.exports = graph_explorer
-async function graph_explorer(opts) {
+const tabs_component = require('tabs')
+
+module.exports = tabsbar
+
+async function tabsbar (opts, callback = id => console.log('calling:', '$' + id), callback_subs = id => console.log('calling_from_tabsbar:', '@' + id)) {
   const { id, sdb } = await get(opts.sid)
   const on = {
-    style: inject
+    style: inject_style
   }
-  const div = document.createElement('div')
-  const shadow = div.attachShadow({ mode: 'closed' })
-  shadow.innerHTML = `<h1>Tabs-bar</h1>`
-  shadow.querySelector('h1').className = 'text'
+  let dricons = {}
+  const el = document.createElement('div')
+  const shadow = el.attachShadow({ mode: 'closed' })
   const subs = await sdb.watch(onbatch)
-  return div
+
+  shadow.innerHTML = `
+    <div class="tabs-bar-container">
+      <button class="hat-btn">${dricons[0]}</button>
+      <tabs></tabs>
+      <button class="bar-btn">${dricons[1]}</button>
+      <button class="bar-btn">${dricons[2]}</button>
+    </div>
+  `
+
+  const tabs = await tabs_component(subs[0], callback_subs)
+  tabs.classList.add('tabs-bar')
+  shadow.querySelector('tabs').replaceWith(tabs)
+  
+  return el
+
+  // Functions defined under return
   function onbatch (batch) {
+    console.log('onbatch:', batch)
     for (const { type, data } of batch) {
+      inject_icons(batch[1].data)
       on[type] && on[type](data)
     }
   }
-  function inject(data) {
-    const sheet = new CSSStyleSheet()
-    sheet.replaceSync(data)
-    shadow.adoptedStyleSheets = [sheet]
+
+  function inject_style (data) {
+      const sheet = new CSSStyleSheet()
+      sheet.replaceSync(data)
+      shadow.adoptedStyleSheets = [sheet]
+  }
+  function inject_icons (data) {
+    dricons = data
   }
 }
-function fallback_module() {
+
+function fallback_module () {
   return {
     api: fallback_instance,
-  }
-  function fallback_instance() {
-    return {
-      drive: {
-        style: {
-          'theme.css': {
-            raw: `
-              .text {
-                color: #D8DEE9;
-                background-color: #2E3440;
-                padding: 1rem;
-                border-left: 4px solid #81A1C1;
-                line-height: 1.6;
-                box-shadow: 0 2px 5px rgba(46, 52, 64, 0.5);
-                transition: background-color 0.3s ease, color 0.3s ease;
-              }
-              
-              .text:hover {
-                color: #88C0D0;
-                background-color: #3B4252;
-              }
-            `
-          }
+    _: {
+      'tabs': {
+        '$': '',
+        mapping: {
+          'icons': 'icons',
+          'variables': 'variables',
+          'style': 'style'
         }
       }
     }
   }
-}
 
-}).call(this)}).call(this,"/src/node_modules/tabsbar.js")
-},{"STATE":1}],11:[function(require,module,exports){
+  function fallback_instance () {
+    return {
+      _: {
+        'tabs': {
+          0: '',
+          mapping: {
+            'icons': 'icons',
+            'variables': 'variables',
+            'style': 'style'
+          }
+        }
+      },
+      drive: {
+        'style/': {
+          'theme.css': {
+            raw: `
+              .tabs-bar-container {
+                display: flex;
+                flex-direction: row;
+                flex-wrap: nowrap;
+                align-items: stretch;
+              }
+              .tabs-bar {
+                display: flex;
+                flex-direction: row;
+                flex-wrap: nowrap;
+                align-items: stretch;
+              }
+            `
+          }
+        },
+        'icons/': {
+          '1.svg': {
+            '$ref': 'hat.svg'
+          },
+          '2.svg': {
+            '$ref': 'hat.svg'
+          },
+          '3.svg': {
+            '$ref': 'docs.svg'
+          },
+        },
+      }
+    }
+  }
+}
+}).call(this)}).call(this,"/src/node_modules/tabsbar/index.js")
+},{"STATE":1,"tabs":9}],11:[function(require,module,exports){
 const init_url = location.hash === '#dev' ? '/doc/state/example/init.js' : 'https://raw.githubusercontent.com/alyhxn/playproject/refs/heads/main/doc/state/example/init.js'
 const args = arguments
 
@@ -1201,10 +1276,12 @@ async function boot (opts) {
   console.log('subs', subs)
   const nav_menu_element = await navbar(subs[names.length], names, initial_checked_indices, menu_callbacks)
   navbar_slot.replaceWith(nav_menu_element)
-  entries.forEach(create_component)
+  create_component(entries)
   window.onload = scroll_to_initial_selected
   return el
-  async function create_component ([name, factory], index) {
+async function create_component (entries_obj) {
+  let index = 0
+  for (const [name, factory] of entries_obj) {
     const is_initially_checked = initial_checked_indices.length === 0 || initial_checked_indices.includes(index + 1)
     const outer = document.createElement('div')
     outer.className = 'component-outer-wrapper'
@@ -1214,10 +1291,13 @@ async function boot (opts) {
       <div class="component-wrapper"></div>
     `
     const inner = outer.querySelector('.component-wrapper')
-    inner.append(await factory(subs[index]))
+    const componentContent = await factory(subs[index])
+    inner.append(componentContent)
     components_wrapper.appendChild(outer)
     wrappers[index] = { outer, inner, name, checkbox_state: is_initially_checked }
+    index++
   }
+}
 
   function scroll_to_initial_selected () {
     if (selected_name_param) {
@@ -1333,15 +1413,14 @@ function fallback_module () {
       'style': 'style'
     }
   }
-  // subs['../src/node_modules/tabbed_editor'] = {
-  //   $: '',
-  //   0: '',
-  //   mapping: {
-  //     'tabs_config': 'tabs_config',
-  //     'file_content': 'file_content',
-  //     'style': 'style'
-  //   }
-  // }
+  subs['../src/node_modules/tabsbar'] = {
+    $: '',
+    0: '',
+    mapping: {
+      'icons': 'icons',
+      'style': 'style'
+    }
+  }
   subs[menuname] = { 
     $: '',
     0: '',

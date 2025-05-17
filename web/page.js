@@ -104,10 +104,12 @@ async function boot (opts) {
   console.log('subs', subs)
   const nav_menu_element = await navbar(subs[names.length], names, initial_checked_indices, menu_callbacks)
   navbar_slot.replaceWith(nav_menu_element)
-  entries.forEach(create_component)
+  create_component(entries)
   window.onload = scroll_to_initial_selected
   return el
-  async function create_component ([name, factory], index) {
+async function create_component (entries_obj) {
+  let index = 0
+  for (const [name, factory] of entries_obj) {
     const is_initially_checked = initial_checked_indices.length === 0 || initial_checked_indices.includes(index + 1)
     const outer = document.createElement('div')
     outer.className = 'component-outer-wrapper'
@@ -117,10 +119,13 @@ async function boot (opts) {
       <div class="component-wrapper"></div>
     `
     const inner = outer.querySelector('.component-wrapper')
-    inner.append(await factory(subs[index]))
+    const componentContent = await factory(subs[index])
+    inner.append(componentContent)
     components_wrapper.appendChild(outer)
     wrappers[index] = { outer, inner, name, checkbox_state: is_initially_checked }
+    index++
   }
+}
 
   function scroll_to_initial_selected () {
     if (selected_name_param) {
@@ -236,15 +241,14 @@ function fallback_module () {
       'style': 'style'
     }
   }
-  // subs['../src/node_modules/tabbed_editor'] = {
-  //   $: '',
-  //   0: '',
-  //   mapping: {
-  //     'tabs_config': 'tabs_config',
-  //     'file_content': 'file_content',
-  //     'style': 'style'
-  //   }
-  // }
+  subs['../src/node_modules/tabsbar'] = {
+    $: '',
+    0: '',
+    mapping: {
+      'icons': 'icons',
+      'style': 'style'
+    }
+  }
   subs[menuname] = { 
     $: '',
     0: '',
