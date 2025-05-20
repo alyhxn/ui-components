@@ -214,8 +214,9 @@ async function create_component (entries_obj) {
   }
 
   function inject(data) {
+    const style_data = Array.isArray(data) ? data[0] : (JSON.parse(data))[0]
     const sheet = new CSSStyleSheet()
-    sheet.replaceSync(data)
+    sheet.replaceSync(style_data)
     shadow.adoptedStyleSheets = [sheet]
   }
 }
@@ -238,6 +239,7 @@ function fallback_module () {
     mapping: {
       'icons': 'icons',
       'variables': 'variables',
+      'scroll': 'scroll',
       'style': 'style'
     }
   }
