@@ -876,11 +876,12 @@ const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 module.exports = component
 
-async function component(opts, callback = id => console.log('calling:', '@' + id)) {
+async function component (opts, callback = id => console.log('calling:', '@' + id)) {
   const { id, sdb } = await get(opts.sid)
+  const { drive } = sdb
   const on = {
     variables: onvariables,
-    style: inject,
+    style: inject_style,
     icons: iconject,
     scroll: onscroll
   }
@@ -888,109 +889,76 @@ async function component(opts, callback = id => console.log('calling:', '@' + id
   const shadow = div.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `<div class="tab-entries"></div>`
   const entries = shadow.querySelector('.tab-entries')
-  
-  console.log(await sdb.drive({type: 'scroll'}).get('position.json'))
-  console.log(sdb.drive({type: 'scroll'}).put('position.json', 5))
+
   /**************************************** 
    console.log('%c TABS COMPONENT INITIALIZED ', 'background: #222; color: #bada55; font-size: 24px; font-weight: bold;')
+   console.log(sdb.drive({type: 'scroll'}).put('position.json', 5))
+   console.log(await sdb.drive({type: 'scroll'}).get('position.json'))
    ****************************************/
-  
+
   let state = {
-    hasIcons: false,
-    hasVariables: false,
+    has_icons: false,
+    has_variables: false,
     icons: {},
     variables: null
   }
-  
-  
-  const subs = await sdb.watch(onbatch)
+
+  const subs = await sdb.watch(on_batch)
   if (entries) {
     let is_down = false
     let start_x
-    let scroll_left_start
-    
-    const handleMouseMove = (e) => {
-      if (!is_down) return
+    let scroll_start
 
-      if (entries.scrollWidth <= entries.clientWidth) {
-        is_down = false
-        entries.classList.remove('grabbing')
-        return
-      }
-
-      e.preventDefault()
-      const x = e.pageX - entries.offsetLeft
-      const walk = (x - start_x) * 1.5
-      entries.scrollLeft = scroll_left_start - walk
-    }
-
-    const handleMouseUp = () => {
-      if (!is_down) return
+    const stop = () => {
       is_down = false
       entries.classList.remove('grabbing')
       update_scroll_position()
-      window.onmousemove = null
-      window.onmouseup = null
     }
-    
-    entries.onmousedown = (e) => {
+
+    const move = x => {
+      if (!is_down) return
+      if (entries.scrollWidth <= entries.clientWidth) return stop()
+      entries.scrollLeft = scroll_start - (x - start_x) * 1.5
+    }
+
+    entries.onmousedown = e => {
       if (entries.scrollWidth <= entries.clientWidth) return
-      
       is_down = true
       entries.classList.add('grabbing')
       start_x = e.pageX - entries.offsetLeft
-      scroll_left_start = entries.scrollLeft
-      
-      window.onmousemove = handleMouseMove
-      window.onmouseup = handleMouseUp
+      scroll_start = entries.scrollLeft
+      window.onmousemove = e => {
+        move(e.pageX - entries.offsetLeft)
+        e.preventDefault()
+      }
+      window.onmouseup = () => {
+        stop()
+        window.onmousemove = window.onmouseup = null
+      }
     }
 
-    entries.onmouseleave = () => {
-      if (!is_down) return
-      is_down = false
-      entries.classList.remove('grabbing')
-      update_scroll_position()
-    }
+    entries.onmouseleave = stop
 
-    entries.ontouchstart = (e) => {
+    entries.ontouchstart = e => {
       if (entries.scrollWidth <= entries.clientWidth) return
-
       is_down = true
       start_x = e.touches[0].pageX - entries.offsetLeft
-      scroll_left_start = entries.scrollLeft
+      scroll_start = entries.scrollLeft
     }
 
-    entries.ontouchend = () => {
-      if (!is_down) return
-      is_down = false
-      update_scroll_position()
-    }
-    
-    entries.ontouchcancel = () => {
-      if (!is_down) return
-      is_down = false
-      update_scroll_position()
-    }
+    ;['ontouchend', 'ontouchcancel'].forEach(ev => {
+      entries[ev] = stop
+    })
 
-    entries.ontouchmove = (e) => {
-      if (!is_down) return
-
-      if (entries.scrollWidth <= entries.clientWidth) {
-        is_down = false
-        return
-      }
-
+    entries.ontouchmove = e => {
+      move(e.touches[0].pageX - entries.offsetLeft)
       e.preventDefault()
-      const x = e.touches[0].pageX - entries.offsetLeft
-      const walk = (x - start_x) * 1.5
-      entries.scrollLeft = scroll_left_start - walk
     }
   }
   return div
-  
-  async function create_btn({ name, id }, index) {
-    if (!state.hasIcons) {
-      console.warn('Trying to create button before icons are loaded')
+
+  async function create_btn ({ name, id }, index) {
+    if (!state.has_icons) {
       return
     }
 
@@ -1011,84 +979,54 @@ async function component(opts, callback = id => console.log('calling:', '@' + id
     return
   }
 
-  function onbatch (batch) {
-    for (const { type, data } of batch) {
-      if (type === 'scroll') {
-        onscroll(data)
-      }
-    }
-    
-    for (const { type, data } of batch) {
-      if (type === 'icons') {
-        iconject(data)
-      }
-      if (type === 'variables') {
-        state.variables = data
-      }
-    }
-
-    for (const { type, data } of batch) {
-      if (type !== 'icons' && type !== 'variables' && type !== 'scroll') {
-        on[type] && on[type](data) 
-      }
-    }
-
-    if (state.hasIcons && state.variables && !state.hasVariables) {
+  function on_batch (batch) {
+    for (const { type, data } of batch) (on[type] || fail)(data, type)
+    if (state.has_icons && state.variables && !state.has_variables) {
       onvariables(state.variables)
     }
   }
-
-  function inject(data) {
+  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+  function inject_style (data) {
     const sheet = new CSSStyleSheet()
     sheet.replaceSync(data)
     shadow.adoptedStyleSheets = [sheet]
   }
 
-  function onvariables(data) {
-    if (!state.hasIcons) {
-      console.warn('Variables received before icons, storing for later')
-      state.variables = data
-      return
-    }
-
-    if(typeof data[0] === 'string') {
-      const variables = JSON.parse(data[0])
-      variables.forEach(create_btn)
-    } else {
-      data[0].forEach(create_btn)
-    }
-    state.hasVariables = true
-    state.variables = null
+  function onvariables (data) {
+    if (!state.has_icons) return (state.variables = data)
+    const vars = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
+    vars.forEach(create_btn)
+    state.has_variables = true
   }
 
-  function iconject(data) {
+  function iconject (data) {
     state.icons = data
-    state.hasIcons = true
+    state.has_icons = true
 
     if (state.variables) {
       onvariables(state.variables)
     }
   }
 
-  function update_scroll_position() {
+  function update_scroll_position () {
   }
 
-  function onscroll(data) {
+  function onscroll (data) {
     if (entries) {
       entries.scrollLeft = data
     }
   }
 }
 
-function fallback_module() {
+function fallback_module () {
   return {
-    api: fallback_instance,
+    api: fallback_instance
   }
-  function fallback_instance() {
+  function fallback_instance () {
     return {
       drive: {
         'icons/': {
-          'cross.svg':{
+          'cross.svg': {
             '$ref': 'cross.svg'
           },
           '1.svg': {
@@ -1120,14 +1058,16 @@ function fallback_module() {
     }
   }
 }
+
 }).call(this)}).call(this,"/src/node_modules/tabs/index.js")
 },{"STATE":1}],10:[function(require,module,exports){
 (function (__filename){(function (){
-const STATE = require('STATE')
-const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
+const state = require('STATE')
+const state_db = state(__filename)
+const { sdb, get } = state_db(fallback_module)
 
 const tabs_component = require('tabs')
+const task_manager = require('task_manager')
 
 module.exports = tabsbar
 
@@ -1136,16 +1076,17 @@ async function tabsbar (opts, callback = id => console.log('calling:', '$' + id)
   const on = {
     style: inject_style
   }
+
   let dricons = {}
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
-  const subs = await sdb.watch(onbatch)
+  const subs = await sdb.watch(on_batch)
 
   shadow.innerHTML = `
     <div class="tabs-bar-container">
       <button class="hat-btn">${dricons[0]}</button>
       <tabs></tabs>
-      <button class="bar-btn">${dricons[1]}</button>
+      <task-manager></task-manager>
       <button class="bar-btn">${dricons[2]}</button>
     </div>
   `
@@ -1153,23 +1094,28 @@ async function tabsbar (opts, callback = id => console.log('calling:', '$' + id)
   const tabs = await tabs_component(subs[0], callback_subs)
   tabs.classList.add('tabs-bar')
   shadow.querySelector('tabs').replaceWith(tabs)
-  
+
+  const task_mgr = await task_manager(subs[1], () => console.log('Task manager clicked!'))
+  task_mgr.classList.add('task-manager')
+  shadow.querySelector('task-manager').replaceWith(task_mgr)
+
   return el
 
-  // Functions defined under return
-  function onbatch (batch) {
-    console.log('onbatch:', batch)
+  function on_batch (batch) {
+    console.log('on_batch:', batch)
     for (const { type, data } of batch) {
       inject_icons(batch[1].data)
-      on[type] && on[type](data)
+      if (on[type]) on[type](data)
     }
   }
 
   function inject_style (data) {
-      const sheet = new CSSStyleSheet()
-      sheet.replaceSync(data)
-      shadow.adoptedStyleSheets = [sheet]
+    console.log('inject_style:', data)
+    const sheet = new window.CSSStyleSheet()
+    sheet.replaceSync(data)
+    shadow.adoptedStyleSheets = [sheet]
   }
+
   function inject_icons (data) {
     dricons = data
   }
@@ -1179,8 +1125,11 @@ function fallback_module () {
   return {
     api: fallback_instance,
     _: {
-      'tabs': {
-        '$': ''
+      tabs: {
+        $: ''
+      },
+      task_manager: {
+        $: ''
       }
     }
   }
@@ -1188,13 +1137,20 @@ function fallback_module () {
   function fallback_instance () {
     return {
       _: {
-        'tabs': {
+        tabs: {
           0: '',
           mapping: {
-            'icons': 'icons',
-            'variables': 'variables',
-            'scroll': 'scroll',
-            'style': 'style'
+            icons: 'icons',
+            variables: 'variables',
+            scroll: 'scroll',
+            style: 'style'
+          }
+        },
+        task_manager: {
+          0: '',
+          mapping: {
+            count: 'count',
+            style: 'style'
           }
         }
       },
@@ -1214,32 +1170,122 @@ function fallback_module () {
                 flex-wrap: nowrap;
                 align-items: stretch;
               }
+              .task-manager {
+                display: flex;
+                flex-direction: row;
+                flex-wrap: nowrap;
+                align-items: stretch;
+              }
             `
           }
         },
         'icons/': {
           '1.svg': {
-            '$ref': 'hat.svg'
+            $ref: 'hat.svg'
           },
           '2.svg': {
-            '$ref': 'hat.svg'
+            $ref: 'hat.svg'
           },
           '3.svg': {
-            '$ref': 'docs.svg'
-          },
-        },
+            $ref: 'docs.svg'
+          }
+        }
       }
     }
   }
 }
 }).call(this)}).call(this,"/src/node_modules/tabsbar/index.js")
-},{"STATE":1,"tabs":9}],11:[function(require,module,exports){
+},{"STATE":1,"tabs":9,"task_manager":11}],11:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { sdb, get } = statedb(fallback_module)
+
+module.exports = task_manager
+
+async function task_manager (opts, callback = () => console.log('task manager clicked')) {
+  const { id, sdb } = await get(opts.sid)
+  let number = 0
+  const on = {
+    style: inject,
+    count: update_count
+  }
+
+  const el = document.createElement('div')
+  const shadow = el.attachShadow({ mode: 'closed' })
+
+  shadow.innerHTML = '<button class="task-count-btn">0</button>'
+
+  const btn = shadow.querySelector('.task-count-btn')
+  btn.onclick = callback
+
+  await sdb.watch(on_batch)
+
+  return el
+
+  function on_batch (batch) {
+    for (const { type, data } of batch) {
+      if (on[type]) on[type](data)
+    }
+  }
+
+  function inject (data) {
+    const sheet = new window.CSSStyleSheet()
+    sheet.replaceSync(data)
+    shadow.adoptedStyleSheets = [sheet]
+  }
+
+  function update_count (data) {
+    if (btn) btn.textContent = data.toString()
+    else number = data
+  }
+}
+
+function fallback_module () {
+  return {
+    api: fallback_instance
+  }
+
+  function fallback_instance () {
+    return {
+      drive: {
+        'style/': {
+          'theme.css': {
+            raw: `
+              .task-count-btn {
+                background: #2d2d2d;
+                color: #fff;
+                border: none;
+                padding: 4px 8px;
+                min-width: 24px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+              }
+              .task-count-btn:hover {
+                background: #3d3d3d;
+              }
+            `
+          }
+        },
+        'count/': {
+          'value.json': {
+            raw: '3'
+          }
+        }
+      }
+    }
+  }
+}
+
+}).call(this)}).call(this,"/src/node_modules/task_manager.js")
+},{"STATE":1}],12:[function(require,module,exports){
 const hash = '895579bb57e5c57fc66e031377cba6c73a313703'
 const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/' + hash + '/'
-const init_url = 'https://raw.githubusercontent.com/alyhxn/playproject/' + hash + '/doc/state/example/init.js'
+const init_url = prefix + 'doc/state/example/init.js'
 const args = arguments
 
-fetch(init_url, { cache: 'no-store' }).then(res => res.text()).then(async source => {
+fetch(init_url).then(res => res.text()).then(async source => {
   const module = { exports: {} }
   const f = new Function('module', 'require', source)
   f(module, require)
@@ -1247,7 +1293,7 @@ fetch(init_url, { cache: 'no-store' }).then(res => res.text()).then(async source
   await init(args, prefix)
   require('./page')
 })
-},{"./page":12}],12:[function(require,module,exports){
+},{"./page":13}],13:[function(require,module,exports){
 (function (__filename){(function (){
 localStorage.clear()
 const STATE = require('../src/node_modules/STATE')
@@ -1564,4 +1610,4 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/chat_history":3,"../src/node_modules/graph_explorer":4,"../src/node_modules/menu":6,"../src/node_modules/search_bar":7,"../src/node_modules/tabbed_editor":8,"../src/node_modules/tabs":9,"../src/node_modules/tabsbar":10}]},{},[11]);
+},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/chat_history":3,"../src/node_modules/graph_explorer":4,"../src/node_modules/menu":6,"../src/node_modules/search_bar":7,"../src/node_modules/tabbed_editor":8,"../src/node_modules/tabs":9,"../src/node_modules/tabsbar":10}]},{},[12]);
