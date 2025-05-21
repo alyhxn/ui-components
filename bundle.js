@@ -889,10 +889,10 @@ async function component(opts, callback = id => console.log('calling:', '@' + id
   shadow.innerHTML = `<div class="tab-entries"></div>`
   const entries = shadow.querySelector('.tab-entries')
   
+  console.log(await sdb.drive({type: 'scroll'}).get('position.json'))
+  console.log(sdb.drive({type: 'scroll'}).put('position.json', 5))
   /**************************************** 
    console.log('%c TABS COMPONENT INITIALIZED ', 'background: #222; color: #bada55; font-size: 24px; font-weight: bold;')
-   console.log(sdb.drive({type: 'scroll'}).put('position.json', 5))
-   console.log(await sdb.drive({type: 'scroll'}).get('position.json'))
    ****************************************/
   
   let state = {
