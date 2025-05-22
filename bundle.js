@@ -6,120 +6,131 @@ const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 
-const { terminal, wand, help } = require('icons')
-const search_bar = require('search_bar')
-
 module.exports = action_bar
-
-async function action_bar (opts) {
+const quick_actions = require('quick_actions')
+async function action_bar(opts, callback = () => console.log('calling:', 'Command History')) {
   const { id, sdb } = await get(opts.sid)
   const on = {
-    style: inject
+    style: style_inject,
+    icons: iconject
   }
+
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
+  
   shadow.innerHTML = `
   <div class="action-bar-container">
-    <div class="action-bar-content">
-      <button class="icon-button">
-        ${terminal()}
-      </button>
-      <div class="separator"></div>
-      <button class="icon-button">
-        ${wand()}
-      </button>
-      <div class="separator"></div>
-      <searchbar></searchbar>
-      <button class="icon-button">
-        ${help()}
-      </button>
+    <div class="command-history">
+      <button class="icon-btn"></button>
+    </div>
+    <div class="quick-actions">
+      <quick-actions></quick-actions>
     </div>
   </div>`
+
+  const history_icon = shadow.querySelector('.icon-btn')
+  const quick_placeholder = shadow.querySelector('quick-actions')
+  let console_icon = {}
   const subs = await sdb.watch(onbatch)
-  console.log(`actionbar subs: `, subs)
-  search_bar(subs[0]).then(el => shadow.querySelector('searchbar').replaceWith(el))
-
-  // to add a click event listener to the buttons:
-  // const [btn1, btn2, btn3] = shadow.querySelectorAll('button')
-  // btn1.addEventListener('click', () => { console.log('Terminal button clicked') })
-
+  console.log(subs)
+  history_icon.innerHTML = console_icon
+  history_icon.onclick = callback
+  const element = await quick_actions(subs[0], () => console.log('quick action text bar clicked'))
+  element.classList.add('replaced-quick-actions')
+  quick_placeholder.replaceWith(element)
   return el
+
   function onbatch (batch) {
-    for (const { type, data } of batch) {
-      on[type] && on[type](data)
-    }
+    for (const { type, data } of batch) (on[type] || fail)(data, type)
   }
-  function inject(data) {
+  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+
+  function style_inject(data) {
     const sheet = new CSSStyleSheet()
     sheet.replaceSync(data)
     shadow.adoptedStyleSheets = [sheet]
   }
+
+  function iconject(data) {
+    console_icon = data[0]
+  }
 }
-function fallback_module () {
+
+function fallback_module() {
   return {
     api: fallback_instance,
     _: {
-      search_bar: {
-        $: ''
-      },
-      icons: {
+      'quick_actions': {
         $: ''
       }
     }
   }
-  function fallback_instance () {
+  function fallback_instance() {
     return {
       _: {
-        search_bar: {
+        'quick_actions': {
           0: '',
           mapping: {
-            style: 'style'
+            'style': 'style',
+            'icons': 'icons',
+            'actions': 'actions'
           }
         }
       },
       drive: {
+        'icons/': {
+          'console.svg': {
+            '$ref': 'console.svg'
+          }
+        },
         'style/': {
           'theme.css': {
             raw: `
               .action-bar-container {
-                  display: flex;
-                  align-items: center;
-                  background-color: #212121;
-                  padding: 0.5rem;
-                  // min-width: 456px
+                display: flex;
+                flex-direction: row;
+                flex-wrap: nowrap;
+                align-items: center;
+                background: #131315;
+                padding: 8px;
+                gap: 12px;
               }
-
-              .action-bar-content {
-                  display: flex;
-                  align-items: center;
-                  gap: 0.5rem;
-                  flex:1;
-              }
-
-              .icon-button {
+              .command-history {
                 display: flex;
                 align-items: center;
-                justify-content: center;
-                padding: 0;
+              }
+              .quick-actions {
+                display: flex;
+                flex: auto;
+                flex-direction: row;
+                flex-wrap: nowrap;
+                align-items: center;
+                min-width: 300px;
+              }
+              .replaced-quick-actions {
+                display: flex;
+                flex: auto;
+              }
+              .icon-btn {
+                display: flex;
+                min-width: 32px;
+                height: 32px;
                 border: none;
-                background-color: transparent;
+                background: transparent;
                 cursor: pointer;
+                flex-direction: row;
+                justify-content: center;
+                align-items: center;
+                padding: 6px;
+                border-radius: 6px;
+                color: #a6a6a6;
               }
-
-
-              .separator {
-                  width: 1px;
-                  height: 24px;
-                  background-color: #424242;
-              }
-
-              .search-bar-container {
-                flex: 1;
-                position: relative;
+              .icon-btn:hover {
+                background: rgba(255, 255, 255, 0.1);
               }
               svg {
-                display: block;
-                margin: auto;
+                width: 20px;
+                height: 20px;
               }
             `
           }
@@ -128,8 +139,8 @@ function fallback_module () {
     }
   }
 }
-}).call(this)}).call(this,"/src/node_modules/action_bar.js")
-},{"STATE":1,"icons":5,"search_bar":7}],3:[function(require,module,exports){
+}).call(this)}).call(this,"/src/node_modules/action_bar/index.js")
+},{"STATE":1,"quick_actions":7}],3:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -641,6 +652,191 @@ const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 
+module.exports = quick_actions
+
+async function quick_actions(opts, callback = () => console.log('quick action text bar clicked')) {
+  const { id, sdb } = await get(opts.sid)
+  
+  const on = {
+    style: inject,
+    icons: iconject,
+    actions: onactions
+  }
+
+  const el = document.createElement('div')
+  const shadow = el.attachShadow({ mode: 'closed' })
+  
+  shadow.innerHTML = `
+    <div class="quick-actions-container">
+      <div class="default-actions"></div>
+      <div class="text-bar" role="button"></div>
+    </div>
+  `
+
+  const default_actions = shadow.querySelector('.default-actions')
+  const text_bar = shadow.querySelector('.text-bar')
+  text_bar.onclick = callback
+  
+  let init = false
+  let icons = {}
+  let defaults = []
+
+  const subs = await sdb.watch(onbatch)
+
+  return el
+
+  function onbatch (batch) {
+    for (const { type, data } of batch) (on[type] || fail)(data, type)
+    if(!init) {
+      create_default_actions(defaults)
+      init = true
+    } else {
+      //TODO: update actions
+    }
+  }
+  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+
+  function inject(data) {
+    const sheet = new CSSStyleSheet()
+    sheet.replaceSync(data)
+    shadow.adoptedStyleSheets = [sheet]
+  }
+
+  function iconject(data) {
+    icons = data
+  }
+
+  function onactions(data) {
+    const vars = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
+    defaults = vars
+  }
+
+  function create_default_actions (actions) {
+    actions.forEach(action => {
+      const btn = document.createElement('div')
+      btn.classList.add('action-btn')
+      btn.innerHTML = icons[action.icon]
+      default_actions.appendChild(btn)
+    })
+  }
+}
+
+function fallback_module() {
+  return {
+    api: fallback_instance
+  }
+
+  function fallback_instance() {
+    return {
+      drive: {
+        'icons/': {
+          '0.svg': {
+            '$ref': 'action1.svg'
+          },
+          '1.svg': {
+            '$ref': 'action2.svg'
+          },
+          '2.svg': {
+            '$ref': 'action1.svg'
+          },
+          '3.svg': {
+            '$ref': 'action2.svg'
+          },
+          '4.svg': {
+            '$ref': 'action1.svg'
+          },
+        },
+        'actions/': {
+          'default.json': {
+            raw: JSON.stringify([
+              {
+                name: 'New',
+                icon: '0',
+              },
+              {
+                name: 'Settings',
+                icon: '1',
+              },
+              {
+                name: 'Help',
+                icon: '2',
+              },
+              {
+                name: 'About',
+                icon: '3',
+              },
+              {
+                name: 'Exit',
+                icon: '4',
+              }
+            ])
+          }
+          // `all.json` is for all actions
+        },
+        'style/': {
+          'theme.css': {
+            raw: `
+              .quick-actions-container {
+                display: flex;
+                flex: auto;
+                flex-direction: row;
+                align-items: center;
+                background: #191919;
+                border-radius: 20px;
+                padding: 4px;
+                gap: 8px;
+                min-width: 200px;
+              }
+              .default-actions {
+                display: flex;
+                flex-direction: row;
+                align-items: center;
+                gap: 4px;
+                padding: 0 4px;
+              }
+              .action-btn {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: transparent;
+                border: none;
+                padding: 6px;
+                border-radius: 50%;
+                cursor: pointer;
+                color: #a6a6a6;
+              }
+              .action-btn:hover {
+                background: rgba(255, 255, 255, 0.1);
+              }
+              .text-bar {
+                flex: 1;
+                min-height: 32px;
+                border-radius: 16px;
+                background: #131315;
+                cursor: pointer;
+                user-select: none;
+              }
+              .text-bar:hover {
+                background: #1a1a1c;
+              }
+              svg {
+                width: 16px;
+                height: 16px;
+              }
+            `
+          }
+        }
+      }
+    }
+  }
+}
+}).call(this)}).call(this,"/src/node_modules/quick_actions/index.js")
+},{"STATE":1}],8:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { sdb, get } = statedb(fallback_module)
+
 const { search, close } = require('icons')
 module.exports = search_bar
 async function search_bar (opts = '') {
@@ -668,7 +864,7 @@ async function search_bar (opts = '') {
   const reset_button = shadow.querySelector('.search-reset-button')
   let barmode = ''
   const subs = await sdb.watch(onbatch)
-  console.log(`search bar subs: ${subs}`)
+  // console.log(`search bar subs: ${subs}`)
 
   async function onbatch (batch) {
     for (const { type, data } of batch) {
@@ -807,7 +1003,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/search_bar.js")
-},{"STATE":1,"icons":5}],8:[function(require,module,exports){
+},{"STATE":1,"icons":5}],9:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -869,7 +1065,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor.js")
-},{"STATE":1}],9:[function(require,module,exports){
+},{"STATE":1}],10:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -890,20 +1086,10 @@ async function component (opts, callback = id => console.log('calling:', '@' + i
   shadow.innerHTML = `<div class="tab-entries"></div>`
   const entries = shadow.querySelector('.tab-entries')
 
-  /**************************************** 
-   console.log('%c TABS COMPONENT INITIALIZED ', 'background: #222; color: #bada55; font-size: 24px; font-weight: bold;')
-   console.log(sdb.drive({type: 'scroll'}).put('position.json', 5))
-   console.log(await sdb.drive({type: 'scroll'}).get('position.json'))
-   ****************************************/
-
-  let state = {
-    has_icons: false,
-    has_variables: false,
-    icons: {},
-    variables: null
-  }
-
-  const subs = await sdb.watch(on_batch)
+  let init = false
+  let variables = []
+  let dricons = []
+  const subs = await sdb.watch(onbatch)
   if (entries) {
     let is_down = false
     let start_x
@@ -945,7 +1131,6 @@ async function component (opts, callback = id => console.log('calling:', '@' + i
       start_x = e.touches[0].pageX - entries.offsetLeft
       scroll_start = entries.scrollLeft
     }
-
     ;['ontouchend', 'ontouchcancel'].forEach(ev => {
       entries[ev] = stop
     })
@@ -958,16 +1143,12 @@ async function component (opts, callback = id => console.log('calling:', '@' + i
   return div
 
   async function create_btn ({ name, id }, index) {
-    if (!state.has_icons) {
-      return
-    }
-
     const el = document.createElement('div')
     el.innerHTML = `
-    <span class="icon">${state.icons[index + 1]}</span>
+    <span class="icon">${dricons[index + 1]}</span>
     <span class='name'>${id}</span>
     <span class="name">${name}</span>
-    <button class="btn">${state.icons[0]}</button>`
+    <button class="btn">${dricons[0]}</button>`
 
     el.className = 'tabsbtn'
     const icon_el = el.querySelector('.icon')
@@ -979,10 +1160,13 @@ async function component (opts, callback = id => console.log('calling:', '@' + i
     return
   }
 
-  function on_batch (batch) {
+  function onbatch (batch) {
     for (const { type, data } of batch) (on[type] || fail)(data, type)
-    if (state.has_icons && state.variables && !state.has_variables) {
-      onvariables(state.variables)
+    if (!init) {
+      variables.forEach(create_btn)
+      init = true
+    } else {
+      // TODO: Here we can handle drive updates
     }
   }
   function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
@@ -993,28 +1177,24 @@ async function component (opts, callback = id => console.log('calling:', '@' + i
   }
 
   function onvariables (data) {
-    if (!state.has_icons) return (state.variables = data)
     const vars = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
-    vars.forEach(create_btn)
-    state.has_variables = true
+    variables = vars
   }
 
   function iconject (data) {
-    state.icons = data
-    state.has_icons = true
-
-    if (state.variables) {
-      onvariables(state.variables)
-    }
+    dricons = data
   }
 
   function update_scroll_position () {
+    // TODO
   }
 
   function onscroll (data) {
-    if (entries) {
-      entries.scrollLeft = data
-    }
+    setTimeout(() => {
+      if (entries) {
+        entries.scrollLeft = data
+      }
+    }, 200)
   }
 }
 
@@ -1046,7 +1226,7 @@ function fallback_module () {
         },
         'scroll/': {
           'position.json': {
-            raw: '0'
+            raw: '100'
           }
         },
         'style/': {
@@ -1060,7 +1240,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/index.js")
-},{"STATE":1}],10:[function(require,module,exports){
+},{"STATE":1}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const state = require('STATE')
 const state_db = state(__filename)
@@ -1080,7 +1260,7 @@ async function tabsbar (opts, callback = id => console.log('calling:', '$' + id)
   let dricons = {}
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
-  const subs = await sdb.watch(on_batch)
+  const subs = await sdb.watch(onbatch)
 
   shadow.innerHTML = `
     <div class="tabs-bar-container">
@@ -1096,13 +1276,12 @@ async function tabsbar (opts, callback = id => console.log('calling:', '$' + id)
   shadow.querySelector('tabs').replaceWith(tabs)
 
   const task_mgr = await task_manager(subs[1], () => console.log('Task manager clicked!'))
-  task_mgr.classList.add('task-manager')
+  task_mgr.classList.add('bar-btn')
   shadow.querySelector('task-manager').replaceWith(task_mgr)
 
   return el
 
-  function on_batch (batch) {
-    console.log('on_batch:', batch)
+  function onbatch (batch) {
     for (const { type, data } of batch) {
       inject_icons(batch[1].data)
       if (on[type]) on[type](data)
@@ -1110,7 +1289,6 @@ async function tabsbar (opts, callback = id => console.log('calling:', '$' + id)
   }
 
   function inject_style (data) {
-    console.log('inject_style:', data)
     const sheet = new window.CSSStyleSheet()
     sheet.replaceSync(data)
     shadow.adoptedStyleSheets = [sheet]
@@ -1166,15 +1344,21 @@ function fallback_module () {
               }
               .tabs-bar {
                 display: flex;
+                flex: auto;
                 flex-direction: row;
                 flex-wrap: nowrap;
                 align-items: stretch;
+                min-width: 300px;
               }
-              .task-manager {
+              .hat-btn, .bar-btn {
                 display: flex;
+                min-width: 32px;
+                border: none;
+                background: #131315;
+                cursor: pointer;
                 flex-direction: row;
-                flex-wrap: nowrap;
-                align-items: stretch;
+                justify-content: center;
+                align-items: center;
               }
             `
           }
@@ -1195,7 +1379,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/tabsbar/index.js")
-},{"STATE":1,"tabs":9,"task_manager":11}],11:[function(require,module,exports){
+},{"STATE":1,"tabs":10,"task_manager":12}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1219,11 +1403,11 @@ async function task_manager (opts, callback = () => console.log('task manager cl
   const btn = shadow.querySelector('.task-count-btn')
   btn.onclick = callback
 
-  await sdb.watch(on_batch)
+  await sdb.watch(onbatch)
 
   return el
 
-  function on_batch (batch) {
+  function onbatch (batch) {
     for (const { type, data } of batch) {
       if (on[type]) on[type](data)
     }
@@ -1256,6 +1440,7 @@ function fallback_module () {
                 background: #2d2d2d;
                 color: #fff;
                 border: none;
+                border-radius: 100%;
                 padding: 4px 8px;
                 min-width: 24px;
                 cursor: pointer;
@@ -1279,7 +1464,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager.js")
-},{"STATE":1}],12:[function(require,module,exports){
+},{"STATE":1}],13:[function(require,module,exports){
 const hash = '895579bb57e5c57fc66e031377cba6c73a313703'
 const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/' + hash + '/'
 const init_url = prefix + 'doc/state/example/init.js'
@@ -1293,7 +1478,7 @@ fetch(init_url).then(res => res.text()).then(async source => {
   await init(args, prefix)
   require('./page')
 })
-},{"./page":13}],13:[function(require,module,exports){
+},{"./page":14}],14:[function(require,module,exports){
 (function (__filename){(function (){
 localStorage.clear()
 const STATE = require('../src/node_modules/STATE')
@@ -1548,6 +1733,14 @@ function fallback_module () {
       'style': 'style'
     }
   }
+  subs['../src/node_modules/action_bar'] = {
+    $: '',
+    0: '',
+    mapping: {
+      'icons': 'icons',
+      'style': 'style'
+    }
+  }
   subs[menuname] = { 
     $: '',
     0: '',
@@ -1610,4 +1803,4 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/chat_history":3,"../src/node_modules/graph_explorer":4,"../src/node_modules/menu":6,"../src/node_modules/search_bar":7,"../src/node_modules/tabbed_editor":8,"../src/node_modules/tabs":9,"../src/node_modules/tabsbar":10}]},{},[12]);
+},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/chat_history":3,"../src/node_modules/graph_explorer":4,"../src/node_modules/menu":6,"../src/node_modules/search_bar":8,"../src/node_modules/tabbed_editor":9,"../src/node_modules/tabs":10,"../src/node_modules/tabsbar":11}]},{},[13]);

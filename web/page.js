@@ -251,6 +251,14 @@ function fallback_module () {
       'style': 'style'
     }
   }
+  subs['../src/node_modules/action_bar'] = {
+    $: '',
+    0: '',
+    mapping: {
+      'icons': 'icons',
+      'style': 'style'
+    }
+  }
   subs[menuname] = { 
     $: '',
     0: '',
