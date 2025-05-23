@@ -160,8 +160,8 @@ function defaults () {
 - Use `onbatch` to handle updates dynamically.
 - Customize components using the `defaults` and `api` functions.
 
-## Example Component: `action_bar.js`
-## `@TODO`
+## Examples Component: `action_bar.js`
+- [`module_example`](./tabs_commented.js)
 
-# Module creation Explanation:
-## `@TODO`
+## Module creation Explanation:
+[`module_guide`](./deep_guide_for_modules.md)

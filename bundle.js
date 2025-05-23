@@ -8,6 +8,7 @@ const { sdb, get } = statedb(fallback_module)
 
 module.exports = action_bar
 const quick_actions = require('quick_actions')
+const console_history = require('console_history')
 async function action_bar(opts, callback = () => console.log('calling:', 'Command History')) {
   const { id, sdb } = await get(opts.sid)
   const on = {
@@ -28,13 +29,13 @@ async function action_bar(opts, callback = () => console.log('calling:', 'Comman
     </div>
   </div>`
 
-  const history_icon = shadow.querySelector('.icon-btn')
   const quick_placeholder = shadow.querySelector('quick-actions')
-  let console_icon = {}
+  const history_placeholder = shadow.querySelector('.command-history')
   const subs = await sdb.watch(onbatch)
-  console.log(subs)
-  history_icon.innerHTML = console_icon
-  history_icon.onclick = callback
+  console.log('subs:', subs)
+  const history_element = await console_history(subs[1])
+  history_element.classList.add('command-history')
+  history_placeholder.replaceWith(history_element)
   const element = await quick_actions(subs[0], () => console.log('quick action text bar clicked'))
   element.classList.add('replaced-quick-actions')
   quick_placeholder.replaceWith(element)
@@ -62,6 +63,9 @@ function fallback_module() {
     _: {
       'quick_actions': {
         $: ''
+      },
+      'console_history': {
+        $: ''
       }
     }
   }
@@ -74,6 +78,14 @@ function fallback_module() {
             'style': 'style',
             'icons': 'icons',
             'actions': 'actions'
+          }
+        },
+        'console_history': {
+          0: '',
+          mapping: {
+            'style': 'style',
+            'icons': 'icons',
+            'commands': 'commands'
           }
         }
       },
@@ -140,7 +152,7 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/action_bar/index.js")
-},{"STATE":1,"quick_actions":7}],3:[function(require,module,exports){
+},{"STATE":1,"console_history":4,"quick_actions":8}],3:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -208,6 +220,184 @@ const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 
+module.exports = console_history
+
+async function console_history(opts, callback = () => console.log('clicked console history')) {
+  const { id, sdb } = await get(opts.sid)
+  const on = {
+    style: style_inject,
+    icons: iconject,
+    commands: oncommands
+  }
+
+  const el = document.createElement('div')
+  const shadow = el.attachShadow({ mode: 'closed' })
+  
+  shadow.innerHTML = `
+  <div class="console-history-container">
+    <button class="icon-btn"></button>
+    <div class="menu-container hidden">
+      <div class="commands-list"></div>
+    </div>
+  </div>`
+
+  const history_btn = shadow.querySelector('.icon-btn')
+  const menu = shadow.querySelector('.menu-container')
+  const commands_list = shadow.querySelector('.commands-list')
+  
+  let init = false
+  let console_icon = ''
+  let commands = []
+  let dricons = []
+  
+  const subs = await sdb.watch(onbatch)
+  history_btn.innerHTML = console_icon
+  history_btn.onclick = toggle_menu
+  
+  return el
+
+  function toggle_menu() {
+    menu.classList.toggle('hidden')
+  }
+
+  function create_command_element(command) {
+    const cmd_el = document.createElement('div')
+    cmd_el.className = 'command-item'
+    
+    const icon = dricons[command.icon_type] || ''
+    const linked_icon = command.linked?.icon_type ? dricons[command.linked.icon_type] : ''
+    
+    cmd_el.innerHTML = `
+      <div class="command-content">
+        <span class="icon">${icon}</span>
+        <span class="command-text">${command.command}</span>
+        <span class="name-path">${command.name_path}</span>
+      </div>
+      ${command.linked?.is ? `
+      <div class="linked-content">
+      <span class="linked-icon">${linked_icon}</span>
+        <span class="linked-name">${command.linked.name}</span>
+      </div>` : ''}`
+    
+    commands_list.appendChild(cmd_el)
+  }
+
+  function onbatch(batch) {
+    for (const { type, data } of batch) (on[type] || fail)(data, type)
+    if(!init){
+      commands.forEach(create_command_element)
+      init = true
+    } else {
+      //TODO
+    }
+  }
+
+  function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+
+  function style_inject(data) {
+    const sheet = new CSSStyleSheet()
+    sheet.replaceSync(data)
+    shadow.adoptedStyleSheets = [sheet]
+  }
+
+  function iconject(data) {
+    console_icon = data.shift()
+    dricons = data
+  }
+
+  function oncommands(data) {
+    commands = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
+  }
+}
+
+function fallback_module() {
+  return {
+    api: fallback_instance
+  }
+  function fallback_instance() {
+    return {
+      drive: {
+        'icons/': {
+          'console.svg': {
+            '$ref': 'console.svg'
+          },
+          'git.svg': {
+            '$ref': 'console.svg'
+
+          },
+          'check.svg': {
+            '$ref': 'console.svg'
+          }
+        },
+        'style/': {
+          'theme.css': {
+            raw: `
+              .console-history-container {
+                position: relative;
+              }
+              .icon-btn {
+                display: flex;
+                min-width: 32px;
+                height: 32px;
+                border: none;
+                background: transparent;
+                cursor: pointer;
+                flex-direction: row;
+                justify-content: center;
+                align-items: center;
+                padding: 6px;
+                border-radius: 6px;
+                color: #a6a6a6;
+              }
+              .icon-btn:hover {
+                background: rgba(255, 255, 255, 0.1);
+              }
+              .menu-container {
+                position: relative;
+                bottom: 100%;
+                left: 0;
+                width: 320px;
+                background: #1e1e1e;
+                border-radius: 8px;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                margin-bottom: 8px;
+                max-height: 400px;
+                overflow-y: auto;
+              }
+              .hidden {
+                display: none;
+              }
+              .commands-list {
+                padding: 8px;
+              }
+              .command-item {
+                padding: 8px;
+                border-radius: 6px;
+                margin-bottom: 4px;
+                cursor: pointer;
+              }
+              .command-item:hover {
+                background: rgba(255, 255, 255, 0.1);
+              }
+            `
+          }
+        },
+        'commands/': {
+          'list.json': {
+            '$ref': 'commands.json'
+          }
+        }
+      }
+    }
+  }
+}
+}).call(this)}).call(this,"/src/node_modules/console_history/index.js")
+},{"STATE":1}],5:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { sdb, get } = statedb(fallback_module)
+
 module.exports = graph_explorer
 async function graph_explorer(opts) {
   const { id, sdb } = await get(opts.sid)
@@ -264,7 +454,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/graph_explorer.js")
-},{"STATE":1}],5:[function(require,module,exports){
+},{"STATE":1}],6:[function(require,module,exports){
 module.exports = {
   terminal,
   wand,
@@ -399,7 +589,7 @@ function crumb() {
 
   return container.outerHTML
 }
-},{}],6:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -646,7 +836,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/menu.js")
-},{"STATE":1}],7:[function(require,module,exports){
+},{"STATE":1}],8:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -831,7 +1021,7 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/quick_actions/index.js")
-},{"STATE":1}],8:[function(require,module,exports){
+},{"STATE":1}],9:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1003,7 +1193,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/search_bar.js")
-},{"STATE":1,"icons":5}],9:[function(require,module,exports){
+},{"STATE":1,"icons":6}],10:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1065,7 +1255,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor.js")
-},{"STATE":1}],10:[function(require,module,exports){
+},{"STATE":1}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1240,7 +1430,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/index.js")
-},{"STATE":1}],11:[function(require,module,exports){
+},{"STATE":1}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const state = require('STATE')
 const state_db = state(__filename)
@@ -1254,7 +1444,8 @@ module.exports = tabsbar
 async function tabsbar (opts, callback = id => console.log('calling:', '$' + id), callback_subs = id => console.log('calling_from_tabsbar:', '@' + id)) {
   const { id, sdb } = await get(opts.sid)
   const on = {
-    style: inject_style
+    style: inject_style,
+    icons: inject_icons
   }
 
   let dricons = {}
@@ -1282,11 +1473,9 @@ async function tabsbar (opts, callback = id => console.log('calling:', '$' + id)
   return el
 
   function onbatch (batch) {
-    for (const { type, data } of batch) {
-      inject_icons(batch[1].data)
-      if (on[type]) on[type](data)
-    }
+    for (const { type, data } of batch) (on[type] || fail)(data, type)
   }
+  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
 
   function inject_style (data) {
     const sheet = new window.CSSStyleSheet()
@@ -1296,6 +1485,7 @@ async function tabsbar (opts, callback = id => console.log('calling:', '$' + id)
 
   function inject_icons (data) {
     dricons = data
+    console.log('icons:££££££££££££££££££££££££££££££££££££££££', dricons)
   }
 }
 
@@ -1379,7 +1569,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/tabsbar/index.js")
-},{"STATE":1,"tabs":10,"task_manager":12}],12:[function(require,module,exports){
+},{"STATE":1,"tabs":11,"task_manager":13}],13:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1464,7 +1654,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager.js")
-},{"STATE":1}],13:[function(require,module,exports){
+},{"STATE":1}],14:[function(require,module,exports){
 const hash = '895579bb57e5c57fc66e031377cba6c73a313703'
 const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/' + hash + '/'
 const init_url = prefix + 'doc/state/example/init.js'
@@ -1478,7 +1668,7 @@ fetch(init_url).then(res => res.text()).then(async source => {
   await init(args, prefix)
   require('./page')
 })
-},{"./page":14}],14:[function(require,module,exports){
+},{"./page":15}],15:[function(require,module,exports){
 (function (__filename){(function (){
 localStorage.clear()
 const STATE = require('../src/node_modules/STATE')
@@ -1803,4 +1993,4 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/chat_history":3,"../src/node_modules/graph_explorer":4,"../src/node_modules/menu":6,"../src/node_modules/search_bar":8,"../src/node_modules/tabbed_editor":9,"../src/node_modules/tabs":10,"../src/node_modules/tabsbar":11}]},{},[13]);
+},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/chat_history":3,"../src/node_modules/graph_explorer":5,"../src/node_modules/menu":7,"../src/node_modules/search_bar":9,"../src/node_modules/tabbed_editor":10,"../src/node_modules/tabs":11,"../src/node_modules/tabsbar":12}]},{},[14]);
