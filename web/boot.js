@@ -1,4 +1,4 @@
-const hash = '895579bb57e5c57fc66e031377cba6c73a313703'
+const hash = '5052beac1d8395d0a62c664c50af74ff1bd9c75e'
 const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/' + hash + '/'
 const init_url = prefix + 'doc/state/example/init.js'
 const args = arguments

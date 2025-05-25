@@ -6,22 +6,20 @@ const { sdb, get } = statedb(fallback_module)
   PAGE
 ******************************************************************************/
 const navbar = require('../src/node_modules/menu')
-const action_bar = require('../src/node_modules/action_bar')
-const search_bar = require('../src/node_modules/search_bar')
-const tabs = require('../src/node_modules/tabs')
+const theme_widget = require('../src/node_modules/theme_widget')
+const taskbar = require('../src/node_modules/taskbar')
 const tabsbar = require('../src/node_modules/tabsbar')
-const chat_history = require('../src/node_modules/chat_history')
-const graph_explorer = require('../src/node_modules/graph_explorer')
-const tabbed_editor = require('../src/node_modules/tabbed_editor')
+const action_bar = require('../src/node_modules/action_bar')
+const space = require('../src/node_modules/space')
+const tabs = require('../src/node_modules/tabs')
 
 const imports = {
-  action_bar,
-  search_bar,
-  tabs,
+  theme_widget,
+  taskbar,
   tabsbar,
-  chat_history,
-  graph_explorer,
-  tabbed_editor
+  action_bar,
+  space,
+  tabs
 }
 config().then(() => boot({ sid: '' }))
 
@@ -119,8 +117,9 @@ async function create_component (entries_obj) {
       <div class="component-wrapper"></div>
     `
     const inner = outer.querySelector('.component-wrapper')
-    const componentContent = await factory(subs[index])
-    inner.append(componentContent)
+    const component_content = await factory(subs[index])
+    component_content.className = 'component-content'
+    inner.append(component_content)
     components_wrapper.appendChild(outer)
     wrappers[index] = { outer, inner, name, checkbox_state: is_initially_checked }
     index++
@@ -223,13 +222,12 @@ async function create_component (entries_obj) {
 function fallback_module () {
   const menuname = '../src/node_modules/menu'
   const names = [
-    '../src/node_modules/action_bar',
-    '../src/node_modules/search_bar',
-    '../src/node_modules/tabs',
+    '../src/node_modules/theme_widget',
+    '../src/node_modules/taskbar',
     '../src/node_modules/tabsbar',
-    '../src/node_modules/chat_history',
-    '../src/node_modules/graph_explorer',
-    '../src/node_modules/tabbed_editor'
+    '../src/node_modules/action_bar',
+    '../src/node_modules/space',
+    '../src/node_modules/tabs'
   ]
   const subs = {}
   names.forEach(subgen)
@@ -304,6 +302,10 @@ function fallback_module () {
             border-radius: 0px;
             background-color: #ffffff;
             min-height: 50px;
+          }
+          .component-content {
+            width: 100%;
+            height: 100%;
           }`
         }
       }

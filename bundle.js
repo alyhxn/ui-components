@@ -152,69 +152,7 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/action_bar/index.js")
-},{"STATE":1,"console_history":4,"quick_actions":8}],3:[function(require,module,exports){
-(function (__filename){(function (){
-const STATE = require('STATE')
-const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
-
-module.exports = chat_history
-async function chat_history(opts) {
-  const { id, sdb } = await get(opts.sid)
-  const on = {
-    style: inject
-  }
-  const div = document.createElement('div')
-  const shadow = div.attachShadow({ mode: 'closed' })
-  shadow.innerHTML = `<h1>Chat-History</h1>`
-  shadow.querySelector('h1').className = 'text'
-  const subs = await sdb.watch(onbatch)
-  return div
-  function onbatch (batch) {
-    for (const { type, data } of batch) {
-      on[type] && on[type](data)
-    }
-  }
-  function inject(data) {
-    const sheet = new CSSStyleSheet()
-    sheet.replaceSync(data)
-    shadow.adoptedStyleSheets = [sheet]
-  }
-}
-function fallback_module() {
-  return {
-    api: fallback_instance,
-  }
-  function fallback_instance() {
-    return {
-      drive: {
-        style: {
-          'theme.css': {
-            raw: `
-              .text {
-                color: #D8DEE9;
-                background-color: #2E3440;
-                padding: 1rem;
-                border-left: 4px solid #81A1C1;
-                line-height: 1.6;
-                box-shadow: 0 2px 5px rgba(46, 52, 64, 0.5);
-                transition: background-color 0.3s ease, color 0.3s ease;
-              }
-              
-              .text:hover {
-                color: #88C0D0;
-                background-color: #3B4252;
-              }
-            `
-          }
-        }
-      }
-    }
-  }
-}
-
-}).call(this)}).call(this,"/src/node_modules/chat_history.js")
-},{"STATE":1}],4:[function(require,module,exports){
+},{"STATE":1,"console_history":3,"quick_actions":5}],3:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -392,204 +330,7 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/console_history/index.js")
-},{"STATE":1}],5:[function(require,module,exports){
-(function (__filename){(function (){
-const STATE = require('STATE')
-const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
-
-module.exports = graph_explorer
-async function graph_explorer(opts) {
-  const { id, sdb } = await get(opts.sid)
-  const on = {
-    style: inject
-  }
-  const div = document.createElement('div')
-  const shadow = div.attachShadow({ mode: 'closed' })
-  shadow.innerHTML = `<h1>Graph-Explorer</h1>`
-  shadow.querySelector('h1').className = 'text'
-  const subs = await sdb.watch(onbatch)
-  return div
-  function onbatch (batch) {
-    for (const { type, data } of batch) {
-      on[type] && on[type](data)
-    }
-  }
-  function inject(data) {
-    const sheet = new CSSStyleSheet()
-    sheet.replaceSync(data)
-    shadow.adoptedStyleSheets = [sheet]
-  }
-}
-function fallback_module() {
-  return {
-    api: fallback_instance,
-  }
-  function fallback_instance() {
-    return {
-      drive: {
-        style: {
-          'theme.css': {
-            raw: `
-              .text {
-                color: #D8DEE9;
-                background-color: #2E3440;
-                padding: 1rem;
-                border-left: 4px solid #81A1C1;
-                line-height: 1.6;
-                box-shadow: 0 2px 5px rgba(46, 52, 64, 0.5);
-                transition: background-color 0.3s ease, color 0.3s ease;
-              }
-              
-              .text:hover {
-                color: #88C0D0;
-                background-color: #3B4252;
-              }
-            `
-          }
-        }
-      }
-    }
-  }
-}
-
-}).call(this)}).call(this,"/src/node_modules/graph_explorer.js")
-},{"STATE":1}],6:[function(require,module,exports){
-module.exports = {
-  terminal,
-  wand,
-  search,
-  close,
-  help,
-  crumb
-}
-
-const stroke = '#a0a0a0'
-const thickness = '1.5'
-const width = '24'
-const height = '24'
-
-function terminal() {
-  const path = `
-  <svg width=${width} height=${height} viewBox="0 0 22 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <g clip-path="url(#clip0_256_7194)">
-      <path d="M16.6365 16.0813H16.8365V15.8813V14.8297V14.6297H16.6365H11.453H11.253V14.8297V15.8813V16.0813H11.453H16.6365ZM5.09034 7.85454L4.9519 7.99496L5.09034 8.13538L8.58038 11.6752L5.09034 15.2151L4.9519 15.3555L5.09034 15.4959L5.8234 16.2394L5.96582 16.3839L6.10824 16.2394L10.4698 11.8156L10.6082 11.6752L10.4698 11.5348L6.10824 7.11102L5.96582 6.96656L5.8234 7.11102L5.09034 7.85454ZM17.6732 0.960156H4.19606C2.36527 0.960156 0.885937 2.46471 0.885937 4.31468V15.8813C0.885937 17.7313 2.36527 19.2358 4.19606 19.2358H17.6732C19.5041 19.2358 20.9834 17.7313 20.9834 15.8813V4.31468C20.9834 2.46471 19.5041 0.960156 17.6732 0.960156ZM2.33285 4.11468C2.43133 3.15557 3.23023 2.41167 4.19606 2.41167H17.6732C18.6391 2.41167 19.438 3.15557 19.5364 4.11468H2.33285ZM4.19606 17.7843C3.16406 17.7843 2.32264 16.935 2.32264 15.8813V5.5662H19.5467V15.8813C19.5467 16.935 18.7053 17.7843 17.6732 17.7843H4.19606Z" fill=${stroke} stroke=${stroke} stroke-width=${thickness / 4} />
-    </g>
-    <defs>
-      <clipPath id="clip0_256_7194">
-        <rect width="22" height="20" fill="white"/>
-      </clipPath>
-    </defs>
-  </svg>`
-
-  const container = document.createElement('div')
-  container.innerHTML = path
-
-  return container.outerHTML
-}
-
-function wand() {
-  const path = `
-  <svg width=${width} height=${height} viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <g clip-path="url(#clip0_256_6751)">
-      <path d="M5 17.5L17.5 5L15 2.5L2.5 15L5 17.5Z" stroke=${stroke} stroke-width=${thickness} stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M12.5 5L15 7.5" stroke=${stroke} stroke-width=${thickness} stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M7.4987 2.5C7.4987 2.94203 7.67429 3.36595 7.98685 3.67851C8.29941 3.99107 8.72334 4.16667 9.16536 4.16667C8.72334 4.16667 8.29941 4.34226 7.98685 4.65482C7.67429 4.96738 7.4987 5.39131 7.4987 5.83333C7.4987 5.39131 7.3231 4.96738 7.01054 4.65482C6.69798 4.34226 6.27406 4.16667 5.83203 4.16667C6.27406 4.16667 6.69798 3.99107 7.01054 3.67851C7.3231 3.36595 7.4987 2.94203 7.4987 2.5Z" stroke=${stroke} stroke-width=${thickness} stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M15.8346 10.8333C15.8346 11.2753 16.0102 11.6992 16.3228 12.0118C16.6354 12.3243 17.0593 12.4999 17.5013 12.4999C17.0593 12.4999 16.6354 12.6755 16.3228 12.9881C16.0102 13.3006 15.8346 13.7246 15.8346 14.1666C15.8346 13.7246 15.659 13.3006 15.3465 12.9881C15.0339 12.6755 14.61 12.4999 14.168 12.4999C14.61 12.4999 15.0339 12.3243 15.3465 12.0118C15.659 11.6992 15.8346 11.2753 15.8346 10.8333Z" stroke=${stroke} stroke-width=${thickness} stroke-linecap="round" stroke-linejoin="round"/>
-    </g>
-    <defs>
-      <clipPath id="clip0_256_6751">
-        <rect width="20" height="20" fill="white"/>
-      </clipPath>
-    </defs>
-  </svg>`
-
-  const container = document.createElement('div')
-  container.innerHTML = path
-
-  return container.outerHTML
-}
-
-function search() {
-  const path = `
-  <svg width=${width} height=${height} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <!-- Group for the circle (background) -->
-    <g id="circle">
-      <circle cx="12" cy="12" r="12" fill="#1A1A1A"/>
-    </g>
-
-    <!-- Group for the search icon (foreground) -->
-    <g id="search-icon" transform="translate(7 7)">
-      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <g clip-path="url(#clip0_256_6745)">
-          <path d="M4.68129 8.49368C6.78776 8.49368 8.49539 6.78605 8.49539 4.67958C8.49539 2.57311 6.78776 0.865479 4.68129 0.865479C2.57482 0.865479 0.867188 2.57311 0.867188 4.67958C0.867188 6.78605 2.57482 8.49368 4.68129 8.49368Z" stroke=${stroke} stroke-width=${thickness} stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M9.22987 9.23084L7.69141 7.69238" stroke=${stroke} stroke-width=${thickness}stroke-linecap="round" stroke-linejoin="round"/>
-        </g>
-        <defs>
-          <clipPath id="clip0_256_6745">
-            <rect width="10" height="10" fill="white"/>
-          </clipPath>
-        </defs>
-      </svg>
-    </g>
-  </svg>`
-
-  const container = document.createElement('div')
-  container.innerHTML = path
-
-  return container.outerHTML
-}
-
-function close() {
-  const path = `
-  <svg width=${width} height=${height} viewBox="0 0 15 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <g clip-path="url(#clip0_256_7190)">
-      <path d="M11.25 4.25L3.75 11.75" stroke=${stroke} stroke-width=${thickness} stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M3.75 4.25L11.25 11.75" stroke=${stroke} stroke-width=${thickness} stroke-linecap="round" stroke-linejoin="round"/>
-    </g>
-    <defs>
-      <clipPath id="clip0_256_7190">
-        <rect width="15" height="15" fill="white" transform="translate(0 0.5)"/>
-      </clipPath>
-    </defs>
-  </svg>`
-
-  const container = document.createElement('div')
-  container.innerHTML = path
-
-  return container.outerHTML
-}
-
-function help() {
-  const path = `
-  <svg width=${width} height=${height} viewBox="0 0 18 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <g clip-path="url(#clip0_256_7199)">
-      <path d="M6 6.66675C6 6.00371 6.27656 5.36782 6.76884 4.89898C7.26113 4.43014 7.92881 4.16675 8.625 4.16675H9.375C10.0712 4.16675 10.7389 4.43014 11.2312 4.89898C11.7234 5.36782 12 6.00371 12 6.66675C12.0276 7.20779 11.8963 7.74416 11.6257 8.19506C11.3552 8.64596 10.9601 8.98698 10.5 9.16675C10.0399 9.40644 9.64482 9.86113 9.37428 10.4623C9.10374 11.0635 8.97238 11.7787 9 12.5001" stroke=${stroke} stroke-width=${thickness * 1.5} stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M9 15.8333V15.8416" stroke=${stroke} stroke-width=${thickness * 1.5} stroke-linecap="round" stroke-linejoin="round"/>
-    </g>
-    <defs>
-      <clipPath id="clip0_256_7199">
-        <rect width="18" height="20" fill="white"/>
-      </clipPath>
-    </defs>
-  </svg>`
-
-  const container = document.createElement('div')
-  container.innerHTML = path
-
-  return container.outerHTML
-}
-function crumb() {
-  const path = `
-  <svg class="w-6 h-6 text-gray-800 dark:text-white" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24">
-    <path stroke=${stroke} stroke-width=${thickness} stroke-linecap="round" stroke-linejoin="round" d="m10 16 4-4-4-4"/>
-  </svg>`
-  const container = document.createElement('div')
-  container.innerHTML = path
-
-  return container.outerHTML
-}
-},{}],7:[function(require,module,exports){
+},{"STATE":1}],4:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -836,7 +577,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/menu.js")
-},{"STATE":1}],8:[function(require,module,exports){
+},{"STATE":1}],5:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1021,230 +762,59 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/quick_actions/index.js")
-},{"STATE":1}],9:[function(require,module,exports){
+},{"STATE":1}],6:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 
-const { search, close } = require('icons')
-module.exports = search_bar
-async function search_bar (opts = '') {
+module.exports = component
+
+async function component (opts) {
   const { id, sdb } = await get(opts.sid)
   const on = {
-    style: inject
+    style: inject_style
   }
+
   const el = document.createElement('div')
-  el.className = 'search-bar-container'
   const shadow = el.attachShadow({ mode: 'closed' })
-  const sheet = new CSSStyleSheet()
-  shadow.innerHTML = `
-  <div class="search-input-container">
-    <div class="search-input-content">
-      <div class="search-input-text"></div>
-      <input type="text" class="search-input" style="display: none;">
-    </div>
-    <button class="search-reset-button"></button>
-  </div>`
+  shadow.innerHTML = `<div class="space"></div>`
 
-  const input_container = shadow.querySelector('.search-input-container')
-  const input_content = shadow.querySelector('.search-input-content')
-  const text_span = shadow.querySelector('.search-input-text')
-  const input_element = shadow.querySelector('.search-input')
-  const reset_button = shadow.querySelector('.search-reset-button')
-  let barmode = ''
-  const subs = await sdb.watch(onbatch)
-  // console.log(`search bar subs: ${subs}`)
-
-  async function onbatch (batch) {
-    for (const { type, data } of batch) {
-      on[type] && on[type](data)
-    }
-  }
-  input_container.onclick = on_input_container_click
-  input_element.onblur = on_input_element_blur
-  reset_button.onclick = on_reset_click
-  text_span.onclick = on_span_click
+  await sdb.watch(onbatch)
 
   return el
-  function inject(data) {
-    sheet.replaceSync(data)
-    shadow.adoptedStyleSheets = [sheet]
-  }
-  function show () {
-    input_content.replaceChildren(input_element)
-    input_element.style.display = 'block'
-    input_element.focus()
-    reset_button.innerHTML = close()
-    barmode = 'already'
-  }
-  function hide () {
-    input_content.replaceChildren(text_span)
-    input_element.style.display = 'none'
-    reset_button.innerHTML = search()
-  }
-  function on_input_container_click (event) {
-    // console.log('Focus Event:', event)
-    if (barmode === 'already') {
-      return
-    }
-    show()
-  }
-  function on_input_element_blur (event) {
-    // console.log('Blur Event:', event)
-    if (input_element.value === '') {
-      hide()
-    }
-  }
-  function on_span_click (event) {
-    event.stopPropagation()
-    handle_breadcrumb_click(event)
-  }
-  function on_reset_click (event) {
-    event.stopPropagation()
-    handle_reset(event)
-  }
-  function handle_reset (event) {
-    // console.log('Reset Event:', event)
-    input_element.value = ''
-    hide()
-  }
-  function handle_breadcrumb_click (event) {
-    // console.log('Breadcrumb Event:', event)
-    show()
-    input_element.placeholder = '#night'
-  }
-}
-function fallback_module () {
-  return {
-    api: fallback_instance,
-    _: {
-      icons: {
-        $: ''
-      }
-    }
-  }
-  function fallback_instance () {
-    return {
-      drive: {
-        'style': {
-          'theme.css':{
-            raw: `
-              .search-bar-container {
-                flex: 1;
-                position: relative;
-              }
-          
-              .search-input-container {
-                height: 2rem;
-                padding-left: 0.75rem;
-                padding-right: 0.75rem;
-                display: flex;
-                flex-direction: row;
-                align-items: center;
-                justify-content: center;
-                background-color: #303030;
-                border-radius: 0.375rem;
-                cursor: text;
-              }
-              
-              svg {
-                display: block;
-                margin: auto;
-              }
-              
-              .search-input-content {
-                flex: 1;
-              }
-          
-              .search-input-text {
-                font-size: 0.875rem;
-                color: #a0a0a0;
-              }
-          
-              .search-input {
-                width: 100%;
-                background-color: transparent;
-                outline: none;
-                border: none;
-                color: #a0a0a0;
-                font-size: 0.875rem;
-              }
-          
-              .search-reset-button {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                margin-left: 0;
-                padding: 0;
-                border: none;
-                background-color: transparent;
-              }
-          
-              .search-reset-button:hover {
-                cursor: pointer;
-              }
-            `
-          }
-        }
-      }
-    }
-  }
-}
-}).call(this)}).call(this,"/src/node_modules/search_bar.js")
-},{"STATE":1,"icons":6}],10:[function(require,module,exports){
-(function (__filename){(function (){
-const STATE = require('STATE')
-const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
 
-module.exports = tabbed_editor
-async function tabbed_editor(opts) {
-  const { id, sdb } = await get(opts.sid)
-  const on = {
-    style: inject
-  }
-  const div = document.createElement('div')
-  const shadow = div.attachShadow({ mode: 'closed' })
-  shadow.innerHTML = `<h1>Tabbed-Editor</h1>`
-  shadow.querySelector('h1').className = 'text'
-  const subs = await sdb.watch(onbatch)
-  return div
   function onbatch (batch) {
     for (const { type, data } of batch) {
       on[type] && on[type](data)
     }
   }
-  function inject(data) {
+
+  function inject_style (data) {
     const sheet = new CSSStyleSheet()
     sheet.replaceSync(data)
     shadow.adoptedStyleSheets = [sheet]
   }
 }
-function fallback_module() {
+
+function fallback_module () {
   return {
-    api: fallback_instance,
+    api: fallback_instance
   }
-  function fallback_instance() {
+
+  function fallback_instance () {
     return {
       drive: {
-        style: {
+        'style/': {
           'theme.css': {
             raw: `
-              .text {
-                color: #D8DEE9;
-                background-color: #2E3440;
-                padding: 1rem;
-                border-left: 4px solid #81A1C1;
-                line-height: 1.6;
-                box-shadow: 0 2px 5px rgba(46, 52, 64, 0.5);
-                transition: background-color 0.3s ease, color 0.3s ease;
-              }
-              
-              .text:hover {
-                color: #88C0D0;
-                background-color: #3B4252;
+              .space {
+                display: flex;
+                min-height: 100px;
+                width: 100%;
+                height: inherit;
+                flex: 1;
+                background-color:#2e3440;
               }
             `
           }
@@ -1254,8 +824,8 @@ function fallback_module() {
   }
 }
 
-}).call(this)}).call(this,"/src/node_modules/tabbed_editor.js")
-},{"STATE":1}],11:[function(require,module,exports){
+}).call(this)}).call(this,"/src/node_modules/space.js")
+},{"STATE":1}],7:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1430,7 +1000,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/index.js")
-},{"STATE":1}],12:[function(require,module,exports){
+},{"STATE":1}],8:[function(require,module,exports){
 (function (__filename){(function (){
 const state = require('STATE')
 const state_db = state(__filename)
@@ -1452,7 +1022,8 @@ async function tabsbar (opts, callback = id => console.log('calling:', '$' + id)
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
   const subs = await sdb.watch(onbatch)
-
+  dricons.forEach(num => console.log(num))
+  console.log('dricons:', dricons)
   shadow.innerHTML = `
     <div class="tabs-bar-container">
       <button class="hat-btn">${dricons[0]}</button>
@@ -1485,7 +1056,6 @@ async function tabsbar (opts, callback = id => console.log('calling:', '$' + id)
 
   function inject_icons (data) {
     dricons = data
-    console.log('icons:££££££££££££££££££££££££££££££££££££££££', dricons)
   }
 }
 
@@ -1528,6 +1098,7 @@ function fallback_module () {
             raw: `
               .tabs-bar-container {
                 display: flex;
+                flex: inherit;
                 flex-direction: row;
                 flex-wrap: nowrap;
                 align-items: stretch;
@@ -1538,7 +1109,7 @@ function fallback_module () {
                 flex-direction: row;
                 flex-wrap: nowrap;
                 align-items: stretch;
-                min-width: 300px;
+                width: 300px;
               }
               .hat-btn, .bar-btn {
                 display: flex;
@@ -1569,7 +1140,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/tabsbar/index.js")
-},{"STATE":1,"tabs":11,"task_manager":13}],13:[function(require,module,exports){
+},{"STATE":1,"tabs":7,"task_manager":9}],9:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1654,8 +1225,227 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager.js")
-},{"STATE":1}],14:[function(require,module,exports){
-const hash = '895579bb57e5c57fc66e031377cba6c73a313703'
+},{"STATE":1}],10:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { sdb, get } = statedb(fallback_module)
+
+const action_bar = require('action_bar')
+const tabsbar = require('tabsbar')
+
+module.exports = taskbar
+
+async function taskbar(opts) {
+  const { id, sdb } = await get(opts.sid)
+  const on = {
+    style: inject_style
+  }
+
+  const el = document.createElement('div')
+  const shadow = el.attachShadow({ mode: 'closed' })
+
+  shadow.innerHTML = `
+  <div class="taskbar-container">
+    <div class="action-bar-slot"></div>
+    <div class="tabsbar-slot"></div>
+  </div>`
+
+  const action_bar_slot = shadow.querySelector('.action-bar-slot')
+  const tabsbar_slot = shadow.querySelector('.tabsbar-slot')
+
+  const subs = await sdb.watch(onbatch)
+  
+  const action_bar_el = await action_bar(subs[0])
+  action_bar_el.classList.add('replaced-action-bar')
+  action_bar_slot.replaceWith(action_bar_el)
+
+  const tabsbar_el = await tabsbar(subs[1])
+  tabsbar_el.classList.add('replaced-tabsbar')
+  tabsbar_slot.replaceWith(tabsbar_el)
+
+  return el
+
+  function onbatch(batch) {
+    for (const { type, data } of batch) (on[type] || fail)(data, type)
+  }
+
+  function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+
+  function inject_style(data) {
+    const sheet = new CSSStyleSheet()
+    sheet.replaceSync(data)
+    shadow.adoptedStyleSheets = [sheet]
+  }
+}
+
+function fallback_module() {
+  return {
+    api: fallback_instance,
+    _: {
+      'action_bar': {
+        $: ''
+      },
+      'tabsbar': {
+        $: ''
+      }
+    }
+  }
+
+  function fallback_instance() {
+    return {
+      _: {
+        'action_bar': {
+          0: '',
+          mapping: {
+            'icons': 'icons',
+            'style': 'style'
+          }
+        },
+        'tabsbar': {
+          0: '',
+          mapping: {
+            'icons': 'icons',
+            'style': 'style'
+          }
+        }
+      },
+      drive: {
+        'style/': {
+          'theme.css': {
+            raw: `
+              .taskbar-container {
+                display: flex;
+                background: rgb(255, 255, 255);
+                column-gap: 1px;
+              }
+              .replaced-tabsbar {
+                display: flex;
+                flex: auto;
+              }
+              .replaced-action-bar {
+                display: flex;
+              }
+              @media (max-width: 768px) {
+                .taskbar-container {
+                  flex-direction: column;
+                }
+              }
+            `
+          }
+        }
+      }
+    }
+  }
+}
+
+}).call(this)}).call(this,"/src/node_modules/taskbar/index.js")
+},{"STATE":1,"action_bar":2,"tabsbar":8}],11:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { sdb, get } = statedb(fallback_module)
+
+const space = require('space')
+const taskbar = require('taskbar')
+
+module.exports = theme_widget
+
+async function theme_widget (opts) {
+  const { id, sdb } = await get(opts.sid)
+  const on = {
+    style: inject_style
+  }
+
+  const el = document.createElement('div')
+  const shadow = el.attachShadow({ mode: 'closed' })
+  shadow.innerHTML = `
+  <div class="theme-widget">
+    <div class="space-slot"></div>
+    <div class="taskbar-slot"></div>
+  </div>`
+
+  const space_slot = shadow.querySelector('.space-slot')
+  const taskbar_slot = shadow.querySelector('.taskbar-slot')
+
+  const subs = await sdb.watch(onbatch)
+  
+  const space_el = await space(subs[0])
+  space_el.classList.add('space')
+  space_slot.replaceWith(space_el)
+
+  const taskbar_el = await taskbar(subs[1])
+  taskbar_slot.replaceWith(taskbar_el)
+
+  return el
+
+  function onbatch (batch) {
+    for (const { type, data } of batch) {
+      on[type] && on[type](data)
+    }
+  }
+
+  function inject_style (data) {
+    const sheet = new CSSStyleSheet()
+    sheet.replaceSync(data)
+    shadow.adoptedStyleSheets = [sheet]
+  }
+}
+
+function fallback_module () {
+  return {
+    api: fallback_instance,
+    _: {
+      'space': {
+        $: ''
+      },
+      'taskbar': {
+        $: ''
+      }
+    }
+  }
+
+  function fallback_instance () {
+    return {
+      _: {
+        'space': {
+          0: '',
+          mapping: {
+            'style': 'style'
+          }
+        },
+        'taskbar': {
+          0: '',
+          mapping: {
+            'style': 'style'
+          }
+        }
+      },
+      drive: {
+        'style/': {
+          'theme.css': {
+            raw: `
+              .theme-widget {
+                display: flex;
+                flex-direction: column;
+                width: 100%;
+                height: 100%;
+                background: #131315;
+              }
+              .space{
+                height: inherit;
+                }
+            `
+          }
+        }
+      }
+    }
+  }
+}
+
+}).call(this)}).call(this,"/src/node_modules/theme_widget/index.js")
+},{"STATE":1,"space":6,"taskbar":10}],12:[function(require,module,exports){
+const hash = '5052beac1d8395d0a62c664c50af74ff1bd9c75e'
 const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/' + hash + '/'
 const init_url = prefix + 'doc/state/example/init.js'
 const args = arguments
@@ -1668,7 +1458,7 @@ fetch(init_url).then(res => res.text()).then(async source => {
   await init(args, prefix)
   require('./page')
 })
-},{"./page":15}],15:[function(require,module,exports){
+},{"./page":13}],13:[function(require,module,exports){
 (function (__filename){(function (){
 localStorage.clear()
 const STATE = require('../src/node_modules/STATE')
@@ -1678,22 +1468,20 @@ const { sdb, get } = statedb(fallback_module)
   PAGE
 ******************************************************************************/
 const navbar = require('../src/node_modules/menu')
-const action_bar = require('../src/node_modules/action_bar')
-const search_bar = require('../src/node_modules/search_bar')
-const tabs = require('../src/node_modules/tabs')
+const theme_widget = require('../src/node_modules/theme_widget')
+const taskbar = require('../src/node_modules/taskbar')
 const tabsbar = require('../src/node_modules/tabsbar')
-const chat_history = require('../src/node_modules/chat_history')
-const graph_explorer = require('../src/node_modules/graph_explorer')
-const tabbed_editor = require('../src/node_modules/tabbed_editor')
+const action_bar = require('../src/node_modules/action_bar')
+const space = require('../src/node_modules/space')
+const tabs = require('../src/node_modules/tabs')
 
 const imports = {
-  action_bar,
-  search_bar,
-  tabs,
+  theme_widget,
+  taskbar,
   tabsbar,
-  chat_history,
-  graph_explorer,
-  tabbed_editor
+  action_bar,
+  space,
+  tabs
 }
 config().then(() => boot({ sid: '' }))
 
@@ -1791,8 +1579,9 @@ async function create_component (entries_obj) {
       <div class="component-wrapper"></div>
     `
     const inner = outer.querySelector('.component-wrapper')
-    const componentContent = await factory(subs[index])
-    inner.append(componentContent)
+    const component_content = await factory(subs[index])
+    component_content.className = 'component-content'
+    inner.append(component_content)
     components_wrapper.appendChild(outer)
     wrappers[index] = { outer, inner, name, checkbox_state: is_initially_checked }
     index++
@@ -1895,13 +1684,12 @@ async function create_component (entries_obj) {
 function fallback_module () {
   const menuname = '../src/node_modules/menu'
   const names = [
-    '../src/node_modules/action_bar',
-    '../src/node_modules/search_bar',
-    '../src/node_modules/tabs',
+    '../src/node_modules/theme_widget',
+    '../src/node_modules/taskbar',
     '../src/node_modules/tabsbar',
-    '../src/node_modules/chat_history',
-    '../src/node_modules/graph_explorer',
-    '../src/node_modules/tabbed_editor'
+    '../src/node_modules/action_bar',
+    '../src/node_modules/space',
+    '../src/node_modules/tabs'
   ]
   const subs = {}
   names.forEach(subgen)
@@ -1976,6 +1764,10 @@ function fallback_module () {
             border-radius: 0px;
             background-color: #ffffff;
             min-height: 50px;
+          }
+          .component-content {
+            width: 100%;
+            height: 100%;
           }`
         }
       }
@@ -1993,4 +1785,4 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/chat_history":3,"../src/node_modules/graph_explorer":5,"../src/node_modules/menu":7,"../src/node_modules/search_bar":9,"../src/node_modules/tabbed_editor":10,"../src/node_modules/tabs":11,"../src/node_modules/tabsbar":12}]},{},[14]);
+},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/menu":4,"../src/node_modules/space":6,"../src/node_modules/tabs":7,"../src/node_modules/tabsbar":8,"../src/node_modules/taskbar":10,"../src/node_modules/theme_widget":11}]},{},[12]);
