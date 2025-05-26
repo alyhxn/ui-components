@@ -13,6 +13,9 @@ const action_bar = require('../src/node_modules/action_bar')
 const space = require('../src/node_modules/space')
 const tabs = require('../src/node_modules/tabs')
 const console_history = require('../src/node_modules/console_history')
+const actions = require('../src/node_modules/actions')
+const task_manager = require('../src/node_modules/task_manager')
+const quick_actions = require('../src/node_modules/quick_actions')
 
 const imports = {
   theme_widget,
@@ -21,7 +24,10 @@ const imports = {
   action_bar,
   space,
   tabs,
-  console_history
+  console_history,
+  actions,
+  task_manager,
+  quick_actions
 }
 config().then(() => boot({ sid: '' }))
 
@@ -229,7 +235,11 @@ function fallback_module () {
     '../src/node_modules/tabsbar',
     '../src/node_modules/action_bar',
     '../src/node_modules/space',
-    '../src/node_modules/tabs'
+    '../src/node_modules/tabs',
+    '../src/node_modules/console_history',
+    '../src/node_modules/actions',
+    '../src/node_modules/task_manager',
+    '../src/node_modules/quick_actions'
   ]
   const subs = {}
   names.forEach(subgen)
@@ -267,6 +277,34 @@ function fallback_module () {
       'commands': 'commands',
       'icons': 'icons',
       'scroll': 'scroll'
+    }
+  }
+  subs['../src/node_modules/actions'] = {
+    $: '',
+    0: '',
+    mapping: {
+      'actions': 'actions',
+      'icons': 'icons',
+      'hardcons': 'hardcons',
+      'style': 'style'
+    }
+  }
+  subs['../src/node_modules/task_manager'] = {
+    $: '',
+    0: '',
+    mapping: {
+      'style': 'style',
+      'count': 'count'
+    }
+  }
+  subs['../src/node_modules/quick_actions'] = {
+    $: '',
+    0: '',
+    mapping: {
+      'style': 'style',
+      'icons': 'icons',
+      'actions': 'actions',
+      'hardcons': 'hardcons'
     }
   }
   subs[menuname] = { 

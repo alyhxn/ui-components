@@ -195,8 +195,8 @@ async function actions(opts, callback = () => console.log('action selected'), qu
   el.filter_actions = (search_term) => {
     filter_actions_by_search(search_term)
   }
-
-  el.style.display = 'none'
+  
+  if(callback.toString() != (() => console.log('action selected')).toString()) el.style.display = 'none'
 
   return el
 
@@ -1258,7 +1258,6 @@ function fallback_module() {
               }
             ])
           }
-          // `all.json` is for all actions
         },
         'style/': {
           'theme.css': {
@@ -2235,6 +2234,9 @@ const action_bar = require('../src/node_modules/action_bar')
 const space = require('../src/node_modules/space')
 const tabs = require('../src/node_modules/tabs')
 const console_history = require('../src/node_modules/console_history')
+const actions = require('../src/node_modules/actions')
+const task_manager = require('../src/node_modules/task_manager')
+const quick_actions = require('../src/node_modules/quick_actions')
 
 const imports = {
   theme_widget,
@@ -2243,7 +2245,10 @@ const imports = {
   action_bar,
   space,
   tabs,
-  console_history
+  console_history,
+  actions,
+  task_manager,
+  quick_actions
 }
 config().then(() => boot({ sid: '' }))
 
@@ -2451,7 +2456,11 @@ function fallback_module () {
     '../src/node_modules/tabsbar',
     '../src/node_modules/action_bar',
     '../src/node_modules/space',
-    '../src/node_modules/tabs'
+    '../src/node_modules/tabs',
+    '../src/node_modules/console_history',
+    '../src/node_modules/actions',
+    '../src/node_modules/task_manager',
+    '../src/node_modules/quick_actions'
   ]
   const subs = {}
   names.forEach(subgen)
@@ -2489,6 +2498,34 @@ function fallback_module () {
       'commands': 'commands',
       'icons': 'icons',
       'scroll': 'scroll'
+    }
+  }
+  subs['../src/node_modules/actions'] = {
+    $: '',
+    0: '',
+    mapping: {
+      'actions': 'actions',
+      'icons': 'icons',
+      'hardcons': 'hardcons',
+      'style': 'style'
+    }
+  }
+  subs['../src/node_modules/task_manager'] = {
+    $: '',
+    0: '',
+    mapping: {
+      'style': 'style',
+      'count': 'count'
+    }
+  }
+  subs['../src/node_modules/quick_actions'] = {
+    $: '',
+    0: '',
+    mapping: {
+      'style': 'style',
+      'icons': 'icons',
+      'actions': 'actions',
+      'hardcons': 'hardcons'
     }
   }
   subs[menuname] = { 
@@ -2557,4 +2594,4 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/console_history":4,"../src/node_modules/menu":5,"../src/node_modules/space":7,"../src/node_modules/tabs":8,"../src/node_modules/tabsbar":9,"../src/node_modules/taskbar":11,"../src/node_modules/theme_widget":12}]},{},[13]);
+},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/actions":3,"../src/node_modules/console_history":4,"../src/node_modules/menu":5,"../src/node_modules/quick_actions":6,"../src/node_modules/space":7,"../src/node_modules/tabs":8,"../src/node_modules/tabsbar":9,"../src/node_modules/task_manager":10,"../src/node_modules/taskbar":11,"../src/node_modules/theme_widget":12}]},{},[13]);
