@@ -12,6 +12,7 @@ const tabsbar = require('../src/node_modules/tabsbar')
 const action_bar = require('../src/node_modules/action_bar')
 const space = require('../src/node_modules/space')
 const tabs = require('../src/node_modules/tabs')
+const console_history = require('../src/node_modules/console_history')
 
 const imports = {
   theme_widget,
@@ -19,7 +20,8 @@ const imports = {
   tabsbar,
   action_bar,
   space,
-  tabs
+  tabs,
+  console_history
 }
 config().then(() => boot({ sid: '' }))
 
@@ -255,6 +257,16 @@ function fallback_module () {
     mapping: {
       'icons': 'icons',
       'style': 'style'
+    }
+  }
+  subs['../src/node_modules/console_history'] = {
+    $: '',
+    0: '',
+    mapping: {
+      'style': 'style',
+      'commands': 'commands',
+      'icons': 'icons',
+      'scroll': 'scroll'
     }
   }
   subs[menuname] = { 

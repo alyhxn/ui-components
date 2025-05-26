@@ -8,7 +8,6 @@ const { sdb, get } = statedb(fallback_module)
 
 module.exports = action_bar
 const quick_actions = require('quick_actions')
-const console_history = require('console_history')
 async function action_bar(opts, callback = () => console.log('calling:', 'Command History')) {
   const { id, sdb } = await get(opts.sid)
   const on = {
@@ -29,13 +28,13 @@ async function action_bar(opts, callback = () => console.log('calling:', 'Comman
     </div>
   </div>`
 
+  const history_icon = shadow.querySelector('.icon-btn')
   const quick_placeholder = shadow.querySelector('quick-actions')
-  const history_placeholder = shadow.querySelector('.command-history')
+  let console_icon = {}
   const subs = await sdb.watch(onbatch)
-  console.log('subs:', subs)
-  const history_element = await console_history(subs[1])
-  history_element.classList.add('command-history')
-  history_placeholder.replaceWith(history_element)
+  console.log(subs)
+  history_icon.innerHTML = console_icon
+  history_icon.onclick = callback
   const element = await quick_actions(subs[0], () => console.log('quick action text bar clicked'))
   element.classList.add('replaced-quick-actions')
   quick_placeholder.replaceWith(element)
@@ -63,9 +62,6 @@ function fallback_module() {
     _: {
       'quick_actions': {
         $: ''
-      },
-      'console_history': {
-        $: ''
       }
     }
   }
@@ -78,14 +74,6 @@ function fallback_module() {
             'style': 'style',
             'icons': 'icons',
             'actions': 'actions'
-          }
-        },
-        'console_history': {
-          0: '',
-          mapping: {
-            'style': 'style',
-            'icons': 'icons',
-            'commands': 'commands'
           }
         }
       },
@@ -152,7 +140,7 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/action_bar/index.js")
-},{"STATE":1,"console_history":3,"quick_actions":5}],3:[function(require,module,exports){
+},{"STATE":1,"quick_actions":5}],3:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -160,111 +148,173 @@ const { sdb, get } = statedb(fallback_module)
 
 module.exports = console_history
 
-async function console_history(opts, callback = () => console.log('clicked console history')) {
+async function console_history (opts, callback = () => console.log('console history toggle')) {
   const { id, sdb } = await get(opts.sid)
   const on = {
-    style: style_inject,
-    icons: iconject,
-    commands: oncommands
+    style: inject_style,
+    commands: oncommands,
+    icons: iconject
   }
 
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
-  
   shadow.innerHTML = `
   <div class="console-history-container">
-    <button class="icon-btn"></button>
-    <div class="menu-container hidden">
-      <div class="commands-list"></div>
+    <div class="console-menu">
+      <console-commands></console-commands>
     </div>
   </div>`
 
-  const history_btn = shadow.querySelector('.icon-btn')
-  const menu = shadow.querySelector('.menu-container')
-  const commands_list = shadow.querySelector('.commands-list')
+  const menu_container = shadow.querySelector('.console-menu')
+  const commands_placeholder = shadow.querySelector('console-commands')
   
   let init = false
-  let console_icon = ''
   let commands = []
   let dricons = []
-  
+  let is_visible = false
+
   const subs = await sdb.watch(onbatch)
-  history_btn.innerHTML = console_icon
-  history_btn.onclick = toggle_menu
   
+  // Initially hide the console history
+  el.style.display = 'none'
+
+  // Expose toggle method on the element for external control
+  el.toggleVisibility = toggle_visibility
+
   return el
 
-  function toggle_menu() {
-    menu.classList.toggle('hidden')
+  function toggle_visibility () {
+    is_visible = !is_visible
+    el.style.display = is_visible ? 'block' : 'none'
   }
 
-  function create_command_element(command) {
-    const cmd_el = document.createElement('div')
-    cmd_el.className = 'command-item'
+  function create_command_item (command_data, index) {
+    const command_el = document.createElement('div')
+    command_el.className = 'command-item'
     
-    const icon = dricons[command.icon_type] || ''
-    const linked_icon = command.linked?.icon_type ? dricons[command.linked.icon_type] : ''
+    const icon_html = dricons[command_data.icon_type] || ''
+    const linked_icon_html = command_data.linked.is ? (dricons[command_data.linked.icon_type] || '') : ''
     
-    cmd_el.innerHTML = `
-      <div class="command-content">
-        <span class="icon">${icon}</span>
-        <span class="command-text">${command.command}</span>
-        <span class="name-path">${command.name_path}</span>
+    // Add action text and icons based on command_data properties
+    let action_html = '';
+    if (command_data.action) { // Assuming 'action' property in command_data
+      action_html += `<div class="action-text">${command_data.action}</div>`;
+    }
+    if (command_data.can_restore) { // Assuming 'can_restore' property
+      action_html += `<div class="action-icon">${dricons['restore'] || ''}</div>`; // Assuming 'restore' icon in dricons
+    }
+    if (command_data.can_delete) { // Assuming 'can_delete' property
+      action_html += `<div class="action-icon">${dricons['delete'] || ''}</div>`; // Assuming 'delete' icon in dricons
+    }
+
+    command_el.innerHTML = `
+    <div class="command-content">
+      <div class="command-icon">${icon_html}</div>
+      <div class="command-info">
+        <div class="command-name">${command_data.command}</div>
+        <div class="command-path">${command_data.name_path}</div>
       </div>
-      ${command.linked?.is ? `
-      <div class="linked-content">
-      <span class="linked-icon">${linked_icon}</span>
-        <span class="linked-name">${command.linked.name}</span>
-      </div>` : ''}`
-    
-    commands_list.appendChild(cmd_el)
+      ${command_data.linked.is ? `
+        <span class="command-separator">---&gt;</span>
+        <div class="linked-info">
+          <div class="linked-icon">${linked_icon_html}</div>
+          <div class="linked-name">${command_data.linked.name}</div>
+        </div>
+      ` : ''}
+      ${action_html ? `<div class="command-actions">${action_html}</div>` : ''}
+    </div>`
+
+    command_el.onclick = () => {
+      console.log('Command clicked:', command_data.command)
+      callback && callback(command_data)
+    }
+
+    return command_el
   }
 
-  function onbatch(batch) {
+  function onbatch (batch) {
     for (const { type, data } of batch) (on[type] || fail)(data, type)
-    if(!init){
-      commands.forEach(create_command_element)
+    
+    if (!init && commands.length > 0) {
+      const commands_container = document.createElement('div')
+      commands_container.className = 'commands-list'
+      
+      commands.forEach((command, index) => {
+        const command_item = create_command_item(command, index)
+        commands_container.appendChild(command_item)
+      })
+      
+      commands_placeholder.replaceWith(commands_container)
       init = true
-    } else {
-      //TODO
     }
   }
 
-  function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+  function fail (data, type) { 
+    throw new Error('invalid message', { cause: { data, type } }) 
+  }
 
-  function style_inject(data) {
+  function inject_style (data) {
     const sheet = new CSSStyleSheet()
     sheet.replaceSync(data)
     shadow.adoptedStyleSheets = [sheet]
   }
 
-  function iconject(data) {
-    console_icon = data.shift()
-    dricons = data
+  function oncommands (data) {
+    const commands_data = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
+    commands = commands_data
   }
 
-  function oncommands(data) {
-    commands = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
+  function iconject (data) {
+    // Convert array of icons to object with icon_type as key
+    dricons = {
+      file: data[0] || '',
+      bulb: data[1] || '',
+      console: data[2] || '',
+      restore: data[3] || '', // Add restore icon
+      delete: data[4] || ''    // Add delete icon
+    }
   }
 }
 
-function fallback_module() {
+function fallback_module () {
   return {
     api: fallback_instance
   }
-  function fallback_instance() {
+
+  function fallback_instance () {
     return {
       drive: {
+        'commands/': {
+          'list.json': {
+            '$ref': 'commands.json'
+          }
+        },
         'icons/': {
+          'file.svg': {
+            raw: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M9.5 1H3.5C3.10218 1 2.72064 1.15804 2.43934 1.43934C2.15804 1.72064 2 2.10218 2 2.5V13.5C2 13.8978 2.15804 14.2794 2.43934 14.5607C2.72064 14.8420 3.10218 15 3.5 15H12.5C12.8978 15 13.2794 14.8420 13.5607 14.5607C13.8420 14.2794 14 13.8978 14 13.5V5.5L9.5 1Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M9.5 1V5.5H14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>`
+          },
+          'bulb.svg': {
+            raw: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M8 1C6.4087 1 4.88258 1.63214 3.75736 2.75736C2.63214 3.88258 2 5.4087 2 7C2 8.5913 2.63214 10.1174 3.75736 11.2426C4.88258 12.3679 6.4087 13 8 13C9.5913 13 11.1174 12.3679 12.2426 11.2426C13.3679 10.1174 14 8.5913 14 7C14 5.4087 13.3679 3.88258 12.2426 2.75736C11.1174 1.63214 9.5913 1 8 1Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M6.5 14H9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>`
+          },
           'console.svg': {
             '$ref': 'console.svg'
           },
-          'git.svg': {
-            '$ref': 'console.svg'
-
+          'restore.svg': { // Add restore icon SVG
+            raw: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-counterclockwise" viewBox="0 0 16 16">
+              <path fill-rule="evenodd" d="M8 3a5 5 0 1 1-4.546 2.914.5.5 0 0 0-.908-.417A6 6 0 1 0 8 2v1z"/>
+              <path d="M8 4.466V.534a.25.25 0 0 0-.41-.192L5.23 2.308a.25.25 0 0 0 0 .384l2.36 1.966A.25.25 0 0 0 8 4.466z"/>
+            </svg>`
           },
-          'check.svg': {
-            '$ref': 'console.svg'
+          'delete.svg': { // Add delete icon SVG
+            raw: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash3" viewBox="0 0 16 16">
+              <path d="M6.5 1h3a.5.5 0 0 1 .5.5v1H6v-1a.5.5 0 0 1 .5-.5ZM11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3A1.5 1.5 0 0 0 5 1.5v1H2.506a.58.58 0 0 0-.01 0H1.5a.5.5 0 0 0 0 1h.538l.853 10.66A2 2 0 0 0 4.885 16h6.23a2 2 0 0 0 1.994-1.84l.853-10.66h.538a.5.5 0 0 0 0-1h-.995a.59.59 0 0 0-.01 0H11Zm1.958 1-.846 10.58a1 1 0 0 1-.997.92H4.885a1 1 0 0 1-.997-.92L3.042 3.5h9.916Zm-7.487 1a.5.5 0 0 1 .528.47l.5 8.5a.5.5 0 0 1-.998.06L5 5.03a.5.5 0 0 1 .47-.528ZM8 4.5a.5.5 0 0 1 .5.5v8.5a.5.5 0 0 1-1 0V5a.5.5 0 0 1 .5-.5Zm2.522.47a.5.5 0 0 1 .528.47l-.5 8.5a.5.5 0 1 1-.998-.06l.5-8.5a.5.5 0 0 1 .47-.528Z"/>
+            </svg>`
           }
         },
         'style/': {
@@ -272,57 +322,159 @@ function fallback_module() {
             raw: `
               .console-history-container {
                 position: relative;
-              }
-              .icon-btn {
-                display: flex;
-                min-width: 32px;
-                height: 32px;
-                border: none;
-                background: transparent;
-                cursor: pointer;
-                flex-direction: row;
-                justify-content: center;
-                align-items: center;
-                padding: 6px;
-                border-radius: 6px;
-                color: #a6a6a6;
-              }
-              .icon-btn:hover {
-                background: rgba(255, 255, 255, 0.1);
-              }
-              .menu-container {
-                position: relative;
-                bottom: 100%;
-                left: 0;
-                width: 320px;
-                background: #1e1e1e;
-                border-radius: 8px;
-                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-                margin-bottom: 8px;
+                width: 100%; /* Or a specific width based on images */
+                background: #202124;
+                border: 1px solid #3c3c3c;
+                Set box-sizing property to border-box:
+                box-sizing: border-box;
+                -moz-box-sizing: border-box;
+                -webkit-box-sizing: border-box;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+                z-index: 1000;
                 max-height: 400px;
                 overflow-y: auto;
+                color: #e8eaed;
               }
-              .hidden {
-                display: none;
+
+              .console-menu {
+                padding: 0px;
               }
+
               .commands-list {
-                padding: 8px;
+                display: flex;
+                flex-direction: column;
+                gap: 0px;
               }
+
               .command-item {
-                padding: 8px;
-                border-radius: 6px;
-                margin-bottom: 4px;
+                display: flex;
+                align-items: center;
+                padding: 10px 16px;
+                background: transparent;
+                border-bottom: 1px solid #3c3c3c;
+                cursor: pointer;
+                transition: background-color 0.2s ease;
+              }
+
+              .command-item:last-child {
+                border-bottom: none;
+              }
+
+              .command-item:hover {
+                background: #282a2d;
+              }
+
+              .command-content {
+                display: flex;
+                align-items: center;
+                width: 100%;
+                gap: 10px; /* Adjusted gap */
+              }
+
+              .command-icon {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 20px;
+                height: 20px;
+                color: #969ba1;
+              }
+
+              .command-icon svg {
+                width: 16px;
+                height: 16px;
+              }
+
+              .command-info {
+                display: flex; /* Use flex to align name and path */
+                align-items: center; /* Vertically align items if they wrap */
+                gap: 8px; /* Gap between name and path */
+                flex-grow: 1; /* Allow info to take available space */
+                min-width: 0; /* Prevent overflow issues with flex items */
+              }
+
+              .command-name {
+                font-size: 13px;
+                font-weight: 400;
+                color: #e8eaed;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+              }
+
+              .command-path {
+                font-size: 13px;
+                color: #969ba1;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+              }
+              
+              .command-separator {
+                color: #969ba1;
+                margin: 0 4px;
+                font-size: 13px;
+              }
+
+              .linked-info {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+              }
+
+              .linked-icon {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 16px;
+                height: 16px;
+                color: #fbbc04; 
+              }
+
+              .linked-icon svg {
+                width: 14px;
+                height: 14px;
+              }
+
+              .linked-name {
+                font-size: 13px;
+                color: #fbbc04;
+                font-weight: 400;
+                white-space: nowrap;
+              }
+
+              .command-actions {
+                display: flex;
+                align-items: center;
+                gap: 10px; /* Adjusted gap */
+                margin-left: auto; /* Pushes actions to the right */
+              }
+
+              .action-text {
+                font-size: 13px;
+                color: #969ba1;
+                white-space: nowrap;
+              }
+
+              .action-icon {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 20px;
+                height: 20px;
+                color: #969ba1;
                 cursor: pointer;
               }
-              .command-item:hover {
-                background: rgba(255, 255, 255, 0.1);
+
+              .action-icon:hover {
+                color: #e8eaed;
+              }
+
+              .action-icon svg {
+                width: 16px;
+                height: 16px;
               }
             `
-          }
-        },
-        'commands/': {
-          'list.json': {
-            '$ref': 'commands.json'
           }
         }
       }
@@ -768,9 +920,11 @@ const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 
+const console_history = require('console_history')
+
 module.exports = component
 
-async function component (opts) {
+async function component (opts, callback = () => console.log('space callback')) {
   const { id, sdb } = await get(opts.sid)
   const on = {
     style: inject_style
@@ -778,9 +932,27 @@ async function component (opts) {
 
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
-  shadow.innerHTML = `<div class="space"></div>`
+  shadow.innerHTML = `
+  <div class="space">
+    <console-history-placeholder></console-history-placeholder>
+  </div>`
 
-  await sdb.watch(onbatch)
+  const console_placeholder = shadow.querySelector('console-history-placeholder')
+  let console_history_el = null
+
+  const subs = await sdb.watch(onbatch)
+  
+  // Create console history and store reference for external control
+  console_history_el = await console_history(subs[0], callback)
+  console_history_el.classList.add('console-history')
+  console_placeholder.replaceWith(console_history_el)
+  
+  // Expose toggle method on the space element for external control
+  el.toggleConsoleHistory = () => {
+    if (console_history_el && console_history_el.toggleVisibility) {
+      console_history_el.toggleVisibility()
+    }
+  }
 
   return el
 
@@ -799,11 +971,26 @@ async function component (opts) {
 
 function fallback_module () {
   return {
-    api: fallback_instance
+    api: fallback_instance,
+    _: {
+      'console_history': {
+        $: ''
+      }
+    }
   }
 
   function fallback_instance () {
     return {
+      _: {
+        'console_history': {
+          0: '',
+          mapping: {
+            'style': 'style',
+            'commands': 'commands',
+            'icons': 'icons'
+          }
+        }
+      },
       drive: {
         'style/': {
           'theme.css': {
@@ -813,8 +1000,13 @@ function fallback_module () {
                 min-height: 100px;
                 width: 100%;
                 height: inherit;
-                flex: 1;
+                flex-direction: column-reverse;
                 background-color:#2e3440;
+                position: relative;
+              }
+              .console-history {
+                position: relative;
+                width: 100%;
               }
             `
           }
@@ -825,7 +1017,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/space.js")
-},{"STATE":1}],7:[function(require,module,exports){
+},{"STATE":1,"console_history":3}],7:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1236,7 +1428,7 @@ const tabsbar = require('tabsbar')
 
 module.exports = taskbar
 
-async function taskbar(opts) {
+async function taskbar(opts, callback = () => console.log('taskbar callback')) {
   const { id, sdb } = await get(opts.sid)
   const on = {
     style: inject_style
@@ -1256,7 +1448,7 @@ async function taskbar(opts) {
 
   const subs = await sdb.watch(onbatch)
   
-  const action_bar_el = await action_bar(subs[0])
+  const action_bar_el = await action_bar(subs[0], callback)
   action_bar_el.classList.add('replaced-action-bar')
   action_bar_slot.replaceWith(action_bar_el)
 
@@ -1370,11 +1562,21 @@ async function theme_widget (opts) {
 
   const subs = await sdb.watch(onbatch)
   
-  const space_el = await space(subs[0])
+  let space_el = null
+  let taskbar_el = null
+  
+  // Callback to handle console history toggle
+  const console_history_callback = () => {
+    if (space_el && space_el.toggleConsoleHistory) {
+      space_el.toggleConsoleHistory()
+    }
+  }
+  
+  space_el = await space(subs[0])
   space_el.classList.add('space')
   space_slot.replaceWith(space_el)
 
-  const taskbar_el = await taskbar(subs[1])
+  taskbar_el = await taskbar(subs[1], console_history_callback)
   taskbar_slot.replaceWith(taskbar_el)
 
   return el
