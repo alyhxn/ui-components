@@ -8,7 +8,7 @@ const { sdb, get } = statedb(fallback_module)
 
 module.exports = action_bar
 const quick_actions = require('quick_actions')
-async function action_bar(opts, callback = () => console.log('calling:', 'Command History')) {
+async function action_bar(opts, callback = () => console.log('calling:', 'Command History'), actions_callback = null) {
   const { id, sdb } = await get(opts.sid)
   const on = {
     style: style_inject,
@@ -35,7 +35,7 @@ async function action_bar(opts, callback = () => console.log('calling:', 'Comman
   console.log(subs)
   history_icon.innerHTML = console_icon
   history_icon.onclick = callback
-  const element = await quick_actions(subs[0], () => console.log('quick action text bar clicked'))
+  const element = await quick_actions(subs[0], () => console.log('quick action text bar clicked'), actions_callback)
   element.classList.add('replaced-quick-actions')
   quick_placeholder.replaceWith(element)
   return el
@@ -73,7 +73,8 @@ function fallback_module() {
           mapping: {
             'style': 'style',
             'icons': 'icons',
-            'actions': 'actions'
+            'actions': 'actions',
+            'hardcons': 'hardcons'
           }
         }
       },
@@ -140,7 +141,313 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/action_bar/index.js")
-},{"STATE":1,"quick_actions":5}],3:[function(require,module,exports){
+},{"STATE":1,"quick_actions":6}],3:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { sdb, get } = statedb(fallback_module)
+
+module.exports = actions
+
+async function actions(opts, callback = () => console.log('action selected'), quick_actions_callback = null) {
+  const { id, sdb } = await get(opts.sid)
+  
+  const on = {
+    style: inject_style,
+    actions: onactions,
+    icons: iconject,
+    hardcons: onhardcons
+  }
+
+  const el = document.createElement('div')
+  const shadow = el.attachShadow({ mode: 'closed' })
+  
+  shadow.innerHTML = `
+  <div class="actions-container">
+    <div class="actions-menu"></div>
+  </div>`
+
+  const actions_menu = shadow.querySelector('.actions-menu')
+  
+  let init = false
+  let actions = []
+  let icons = {}
+  let hardcons = {}
+  let is_visible = false
+
+  const subs = await sdb.watch(onbatch)
+
+  el.toggle_actions = () => {
+    is_visible = !is_visible
+    el.style.display = is_visible ? 'block' : 'none'
+  }
+
+  el.show_actions = () => {
+    is_visible = true
+    el.style.display = 'block'
+  }
+
+  el.hide_actions = () => {
+    is_visible = false
+    el.style.display = 'none'
+  }
+
+  el.filter_actions = (search_term) => {
+    filter_actions_by_search(search_term)
+  }
+
+  el.style.display = 'none'
+
+  return el
+
+  function onbatch(batch) {
+    for (const { type, data } of batch) (on[type] || fail)(data, type)
+    if (!init) {
+      create_actions_menu()
+      init = true
+    }
+  }
+
+  function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+
+  function inject_style(data) {
+    const sheet = new CSSStyleSheet()
+    sheet.replaceSync(data)
+    shadow.adoptedStyleSheets = [sheet]
+  }
+
+  function iconject(data) {
+    icons = data
+  }
+
+  function onhardcons(data) {
+    hardcons = {
+      pin: data[0],
+      unpin: data[1],
+      default: data[2],
+      undefault: data[3]
+    }
+  }
+
+  function onactions(data) {
+    const vars = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
+    actions = vars
+  }
+
+  function create_actions_menu() {
+    actions_menu.innerHTML = ''
+    actions.forEach(create_action_item)
+  }
+
+  function create_action_item(action_data, index) {
+    const action_item = document.createElement('div')
+    action_item.classList.add('action-item')
+    
+    const icon = icons[index]
+    
+    action_item.innerHTML = `
+      <div class="action-icon">${icon}</div>
+      <div class="action-name">${action_data.action}</div>
+      <div class="action-pin">${action_data.pin ? hardcons.pin : hardcons.unpin}</div>
+      <div class="action-default">${action_data.default ? hardcons.default : hardcons.undefault}</div>
+      
+    `
+    
+    action_item.onclick = () => {
+      callback(action_data)
+      if (quick_actions_callback && quick_actions_callback.set_selected_action) {
+        quick_actions_callback.set_selected_action(action_data)
+      }
+      
+      el.hide_actions()
+    }
+    
+    actions_menu.appendChild(action_item)
+  }
+
+  function filter_actions_by_search(search_term) {
+    const items = shadow.querySelectorAll('.action-item')
+    items.forEach(item => {
+      const action_name = item.dataset.action.toLowerCase()
+      const matches = action_name.includes(search_term.toLowerCase())
+      item.style.display = matches ? 'flex' : 'none'
+    })
+  }
+}
+
+function fallback_module() {
+  return {
+    api: fallback_instance
+  }
+
+  function fallback_instance() {
+    return {
+      drive: {
+        'actions/': {
+          'commands.json': {
+            raw: JSON.stringify([
+              {
+                action: 'New File',
+                pinned: true,
+                default: true,
+                icon: 'file'
+              },
+              {
+                action: 'Open File',
+                pinned: false,
+                default: true,
+                icon: 'folder'
+              },
+              {
+                action: 'Save File',
+                pinned: true,
+                default: false,
+                icon: 'save'
+              },
+              {
+                action: 'Settings',
+                pinned: false,
+                default: true,
+                icon: 'gear'
+              },
+              {
+                action: 'Help',
+                pinned: false,
+                default: false,
+                icon: 'help'
+              },
+              {
+                action: 'Terminal',
+                pinned: true,
+                default: true,
+                icon: 'terminal'
+              },
+              {
+                action: 'Search',
+                pinned: false,
+                default: true,
+                icon: 'search'
+              }
+            ])
+          }
+        },
+        'icons/': {
+          'file.svg': {
+            '$ref': 'icon.svg'
+          },
+          'folder.svg': {
+            '$ref': 'icon.svg'
+          },
+          'save.svg': {
+            '$ref': 'icon.svg'
+          },
+          'gear.svg': {
+            '$ref': 'icon.svg'
+          },
+          'help.svg': {
+            '$ref': 'icon.svg'
+          },
+          'terminal.svg': {
+            '$ref': 'icon.svg'
+          },
+          'search.svg': {
+            '$ref': 'icon.svg'
+          }
+        },
+        'hardcons/': {
+          'pin.svg': {
+            '$ref': 'pin.svg'
+          },
+          'unpin.svg': {
+            '$ref': 'unpin.svg'
+          },
+          'default.svg': {
+            '$ref': 'default.svg'
+          },
+          'undefault.svg': {
+            '$ref': 'undefault.svg'
+          }
+        },
+        'style/': {
+          'theme.css': {
+            raw: `
+              .actions-container {
+                position: relative;
+                top: 0;
+                left: 0;
+                right: 0;
+                background: #202124;
+                border: 1px solid #3c3c3c;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+                z-index: 1;
+                max-height: 400px;
+                overflow-y: auto;
+                color: #e8eaed;
+              }
+              
+              .actions-menu {
+                padding: 8px 0;
+              }
+              
+              .action-item {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                padding: 8px 16px;
+                cursor: pointer;
+                border-bottom: 1px solid #3c3c3c;
+                transition: background-color 0.2s ease;
+              }
+              
+              .action-item:hover {
+                background-color: #2d2f31;
+              }
+              
+              .action-item:last-child {
+                border-bottom: none;
+              }
+              
+              .action-icon {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 20px;
+                height: 20px;
+                color: #a6a6a6;
+              }
+              
+              .action-name {
+                flex: 1;
+                font-size: 14px;
+                color: #e8eaed;
+              }
+              
+              .action-pin .action-default{
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                width: 16px;
+                height: 16px;
+                font-size: 12px;
+                opacity: 0.7;
+                color: #a6a6a6;
+              }
+              
+              svg {
+                width: 16px;
+                height: 16px;
+              }
+            `
+          }
+        }
+      }
+    }
+  }
+}
+
+}).call(this)}).call(this,"/src/node_modules/actions/index.js")
+},{"STATE":1}],4:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -165,7 +472,6 @@ async function console_history (opts, callback = () => console.log('console hist
     </div>
   </div>`
 
-  const menu_container = shadow.querySelector('.console-menu')
   const commands_placeholder = shadow.querySelector('console-commands')
   
   let init = false
@@ -174,11 +480,8 @@ async function console_history (opts, callback = () => console.log('console hist
   let is_visible = false
 
   const subs = await sdb.watch(onbatch)
-  
-  // Initially hide the console history
-  el.style.display = 'none'
+  if(callback.toString() != (() => console.log('console history toggle')).toString()) el.style.display = 'none'
 
-  // Expose toggle method on the element for external control
   el.toggleVisibility = toggle_visibility
 
   return el
@@ -188,54 +491,45 @@ async function console_history (opts, callback = () => console.log('console hist
     el.style.display = is_visible ? 'block' : 'none'
   }
 
-  function create_command_item (command_data, index) {
+  function create_command_item (command_data) {
     const command_el = document.createElement('div')
     command_el.className = 'command-item'
-    
+
     const icon_html = dricons[command_data.icon_type] || ''
     const linked_icon_html = command_data.linked.is ? (dricons[command_data.linked.icon_type] || '') : ''
-    
-    // Add action text and icons based on command_data properties
-    let action_html = '';
-    if (command_data.action) { // Assuming 'action' property in command_data
-      action_html += `<div class="action-text">${command_data.action}</div>`;
-    }
-    if (command_data.can_restore) { // Assuming 'can_restore' property
-      action_html += `<div class="action-icon">${dricons['restore'] || ''}</div>`; // Assuming 'restore' icon in dricons
-    }
-    if (command_data.can_delete) { // Assuming 'can_delete' property
-      action_html += `<div class="action-icon">${dricons['delete'] || ''}</div>`; // Assuming 'delete' icon in dricons
-    }
+
+    let action_html = ''
+    action_html += command_data.can_restore ? '<div class="action-icon">' + (dricons.restore || '') + '</div>' : ''
+    action_html += command_data.can_delete ? '<div class="action-icon">' + (dricons.delete || '') + '</div>' : ''
+    action_html += command_data.action ? '<div class="action-text">' + command_data.action + '</div>' : ''
 
     command_el.innerHTML = `
     <div class="command-content">
-      <div class="command-icon">${icon_html}</div>
-      <div class="command-info">
-        <div class="command-name">${command_data.command}</div>
-        <div class="command-path">${command_data.name_path}</div>
-      </div>
-      ${command_data.linked.is ? `
-        <span class="command-separator">---&gt;</span>
-        <div class="linked-info">
+    <div class="command-icon">${icon_html}</div>
+    <div class="command-info">
+      <div class="command-path">${command_data.name_path}</div>
+    </div>
+    ${command_data.linked.is
+      ? `<div class="linked-info">
+          <span class="command-separator">---&gt;</span>
           <div class="linked-icon">${linked_icon_html}</div>
           <div class="linked-name">${command_data.linked.name}</div>
-        </div>
-      ` : ''}
-      ${action_html ? `<div class="command-actions">${action_html}</div>` : ''}
-    </div>`
+        </div>`
+      : ''}
+      ${action_html
+        ? `<div class="command-actions">${action_html}</div>`
+        : ''}
+        <div class="command-name">${command_data.command}</div>
+      </div>`
 
-    command_el.onclick = () => {
+    command_el.onclick = function () {
       console.log('Command clicked:', command_data.command)
-      callback && callback(command_data)
+      if (callback) callback(command_data)
     }
 
     return command_el
   }
-
-  function onbatch (batch) {
-    for (const { type, data } of batch) (on[type] || fail)(data, type)
-    
-    if (!init && commands.length > 0) {
+  function render_commands () {
       const commands_container = document.createElement('div')
       commands_container.className = 'commands-list'
       
@@ -246,6 +540,12 @@ async function console_history (opts, callback = () => console.log('console hist
       
       commands_placeholder.replaceWith(commands_container)
       init = true
+  }
+  function onbatch (batch) {
+    for (const { type, data } of batch) (on[type] || fail)(data, type)
+    
+    if (!init && commands.length > 0) {
+      render_commands()
     }
   }
 
@@ -265,13 +565,11 @@ async function console_history (opts, callback = () => console.log('console hist
   }
 
   function iconject (data) {
-    // Convert array of icons to object with icon_type as key
     dricons = {
       file: data[0] || '',
       bulb: data[1] || '',
-      console: data[2] || '',
-      restore: data[3] || '', // Add restore icon
-      delete: data[4] || ''    // Add delete icon
+      restore: data[2] || '',
+      delete: data[3] || '' 
     }
   }
 }
@@ -302,16 +600,13 @@ function fallback_module () {
               <path d="M6.5 14H9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>`
           },
-          'console.svg': {
-            '$ref': 'console.svg'
-          },
-          'restore.svg': { // Add restore icon SVG
+          'restore.svg': {
             raw: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-counterclockwise" viewBox="0 0 16 16">
               <path fill-rule="evenodd" d="M8 3a5 5 0 1 1-4.546 2.914.5.5 0 0 0-.908-.417A6 6 0 1 0 8 2v1z"/>
               <path d="M8 4.466V.534a.25.25 0 0 0-.41-.192L5.23 2.308a.25.25 0 0 0 0 .384l2.36 1.966A.25.25 0 0 0 8 4.466z"/>
             </svg>`
           },
-          'delete.svg': { // Add delete icon SVG
+          'delete.svg': {
             raw: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-trash3" viewBox="0 0 16 16">
               <path d="M6.5 1h3a.5.5 0 0 1 .5.5v1H6v-1a.5.5 0 0 1 .5-.5ZM11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3A1.5 1.5 0 0 0 5 1.5v1H2.506a.58.58 0 0 0-.01 0H1.5a.5.5 0 0 0 0 1h.538l.853 10.66A2 2 0 0 0 4.885 16h6.23a2 2 0 0 0 1.994-1.84l.853-10.66h.538a.5.5 0 0 0 0-1h-.995a.59.59 0 0 0-.01 0H11Zm1.958 1-.846 10.58a1 1 0 0 1-.997.92H4.885a1 1 0 0 1-.997-.92L3.042 3.5h9.916Zm-7.487 1a.5.5 0 0 1 .528.47l.5 8.5a.5.5 0 0 1-.998.06L5 5.03a.5.5 0 0 1 .47-.528ZM8 4.5a.5.5 0 0 1 .5.5v8.5a.5.5 0 0 1-1 0V5a.5.5 0 0 1 .5-.5Zm2.522.47a.5.5 0 0 1 .528.47l-.5 8.5a.5.5 0 1 1-.998-.06l.5-8.5a.5.5 0 0 1 .47-.528Z"/>
             </svg>`
@@ -330,7 +625,7 @@ function fallback_module () {
                 -moz-box-sizing: border-box;
                 -webkit-box-sizing: border-box;
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-                z-index: 1000;
+                z-index: 1;
                 max-height: 400px;
                 overflow-y: auto;
                 color: #e8eaed;
@@ -389,7 +684,6 @@ function fallback_module () {
                 display: flex; /* Use flex to align name and path */
                 align-items: center; /* Vertically align items if they wrap */
                 gap: 8px; /* Gap between name and path */
-                flex-grow: 1; /* Allow info to take available space */
                 min-width: 0; /* Prevent overflow issues with flex items */
               }
 
@@ -420,6 +714,8 @@ function fallback_module () {
                 display: flex;
                 align-items: center;
                 gap: 6px;
+                flex-grow: 1; /* Allow info to take available space */
+
               }
 
               .linked-icon {
@@ -482,7 +778,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/console_history/index.js")
-},{"STATE":1}],4:[function(require,module,exports){
+},{"STATE":1}],5:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -729,7 +1025,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/menu.js")
-},{"STATE":1}],5:[function(require,module,exports){
+},{"STATE":1}],6:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -737,36 +1033,124 @@ const { sdb, get } = statedb(fallback_module)
 
 module.exports = quick_actions
 
-async function quick_actions(opts, callback = () => console.log('quick action text bar clicked')) {
+async function quick_actions(opts, callback = () => console.log('quick action text bar clicked'), actions_callback = null) {
   const { id, sdb } = await get(opts.sid)
   
   const on = {
     style: inject,
     icons: iconject,
+    hardcons: onhardcons,
     actions: onactions
   }
 
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
   
+  
   shadow.innerHTML = `
     <div class="quick-actions-container">
       <div class="default-actions"></div>
       <div class="text-bar" role="button"></div>
+      <div class="input-wrapper" style="display: none;">
+        <div class="input-display">
+          <span class="slash-prefix">/</span>
+          <span class="command-text"></span>
+          <input class="input-field" type="text" placeholder="Type to search actions...">
+        </div>
+        <button class="submit-btn" style="display: none;"></button>
+        <button class="close-btn"></button>
+      </div>
     </div>
   `
-
   const default_actions = shadow.querySelector('.default-actions')
   const text_bar = shadow.querySelector('.text-bar')
-  text_bar.onclick = callback
-  
+  const input_wrapper = shadow.querySelector('.input-wrapper')
+  const slash_prefix = shadow.querySelector('.slash-prefix')
+  const command_text = shadow.querySelector('.command-text')
+  const input_field = shadow.querySelector('.input-field')
+  const submit_btn = shadow.querySelector('.submit-btn')
+  const close_btn = shadow.querySelector('.close-btn')
+
   let init = false
   let icons = {}
+  let hardcons = {}
   let defaults = []
+  let is_input_active = false
+  let selected_action = null
+
+  text_bar.onclick = activate_input_field
+  close_btn.onclick = deactivate_input_field
+  
+  submit_btn.onclick = () => selected_action ? console.log('Selected action submitted:', selected_action) : null
+  
+  input_field.oninput = (e) => {
+    if (actions_callback && actions_callback.filter_actions) {
+      actions_callback.filter_actions(e.target.value)
+    }
+  }
+
+  el.set_selected_action = (action_data) => {
+    selected_action = action_data
+    update_input_display()
+  }
+
+  if (actions_callback) {
+    actions_callback.set_selected_action = el.set_selected_action
+  }
 
   const subs = await sdb.watch(onbatch)
-
+  submit_btn.innerHTML = hardcons.submit
+  close_btn.innerHTML = hardcons.cross
   return el
+
+  function activate_input_field() {
+    is_input_active = true
+    
+    default_actions.style.display = 'none'
+    text_bar.style.display = 'none'
+    
+    input_wrapper.style.display = 'flex'
+    input_field.focus()
+    
+    if (actions_callback && actions_callback.show_actions) {
+      actions_callback.show_actions()
+    }
+    
+    callback()
+  }
+
+  function deactivate_input_field() {
+    is_input_active = false
+    
+    default_actions.style.display = 'flex'
+    text_bar.style.display = 'flex'
+    
+    input_wrapper.style.display = 'none'
+    
+    input_field.value = ''
+    selected_action = null
+    update_input_display()
+    
+    if (actions_callback && actions_callback.hide_actions) {
+      actions_callback.hide_actions()
+    }
+  }
+
+  function update_input_display() {
+    if (selected_action) {
+      slash_prefix.style.display = 'inline'
+      command_text.style.display = 'inline'
+      command_text.textContent = `"${selected_action.action}"`
+      input_field.style.display = 'none'
+      submit_btn.style.display = 'flex'
+    } else {
+      slash_prefix.style.display = 'none'
+      command_text.style.display = 'none'
+      input_field.style.display = 'block'
+      submit_btn.style.display = 'none'
+      input_field.placeholder = 'Type to search actions...'
+    }
+  }
 
   function onbatch (batch) {
     for (const { type, data } of batch) (on[type] || fail)(data, type)
@@ -784,7 +1168,12 @@ async function quick_actions(opts, callback = () => console.log('quick action te
     sheet.replaceSync(data)
     shadow.adoptedStyleSheets = [sheet]
   }
-
+  function onhardcons(data) {
+    hardcons = {
+      submit: data[0],
+      cross: data[1]
+    }
+  }
   function iconject(data) {
     icons = data
   }
@@ -795,12 +1184,19 @@ async function quick_actions(opts, callback = () => console.log('quick action te
   }
 
   function create_default_actions (actions) {
+    default_actions.innerHTML = ''
     actions.forEach(action => {
       const btn = document.createElement('div')
       btn.classList.add('action-btn')
       btn.innerHTML = icons[action.icon]
       default_actions.appendChild(btn)
     })
+    
+    if (icons['close'] || icons['5']) {
+      close_btn.innerHTML = icons['close'] || icons['4']
+    } else {
+      close_btn.innerHTML = '✕'
+    }
   }
 }
 
@@ -827,7 +1223,15 @@ function fallback_module() {
           },
           '4.svg': {
             '$ref': 'action1.svg'
+          }
+        },
+        'hardcons/': {
+          'submit.svg': {
+            '$ref': 'submit.svg'
           },
+          'close.svg': {
+            '$ref': 'cross.svg'
+          }
         },
         'actions/': {
           'default.json': {
@@ -902,6 +1306,89 @@ function fallback_module() {
               .text-bar:hover {
                 background: #1a1a1c;
               }
+              .input-wrapper {
+                display: flex;
+                flex: 1;
+                align-items: center;
+                background: #131315;
+                border-radius: 16px;
+                border: 1px solid #3c3c3c;
+                padding-right: 4px;
+              }
+              .input-wrapper:focus-within {
+                border-color: #4285f4;
+                background: #1a1a1c;
+              }
+              .input-display {
+                display: flex;
+                flex: 1;
+                align-items: center;
+                padding: 0 12px;
+                min-height: 32px;
+              }
+              .slash-prefix {
+                color: #a6a6a6;
+                font-size: 14px;
+                margin-right: 4px;
+                display: none;
+              }
+              .command-text {
+                color: #e8eaed;
+                font-size: 14px;
+                background: #2d2d2d;
+                border: 1px solid #4285f4;
+                border-radius: 4px;
+                padding: 2px 6px;
+                font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+                display: none;
+              }
+              .input-field {
+                flex: 1;
+                min-height: 32px;
+                background: transparent;
+                border: none;
+                color: #e8eaed;
+                padding: 0 12px;
+                font-size: 14px;
+                outline: none;
+              }
+              .input-field::placeholder {
+                color: #a6a6a6;
+              }
+              .submit-btn {
+                display: none;
+                align-items: center;
+                justify-content: center;
+                background: #ffffff00;
+                border: none;
+                padding: 6px;
+                border-radius: 50%;
+                cursor: pointer;
+                color: white;
+                min-width: 32px;
+                height: 32px;
+                margin-right: 4px;
+                font-size: 12px;
+              }
+              .submit-btn:hover {
+                background: #ffffff00;
+              }
+              .close-btn {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: transparent;
+                border: none;
+                padding: 6px;
+                border-radius: 50%;
+                cursor: pointer;
+                color: #a6a6a6;
+                min-width: 32px;
+                height: 32px;
+              }
+              .close-btn:hover {
+                background: rgba(255, 255, 255, 0.1);
+              }
               svg {
                 width: 16px;
                 height: 16px;
@@ -914,17 +1401,18 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/quick_actions/index.js")
-},{"STATE":1}],6:[function(require,module,exports){
+},{"STATE":1}],7:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 
 const console_history = require('console_history')
+const actions = require('actions')
 
 module.exports = component
 
-async function component (opts, callback = () => console.log('space callback')) {
+async function component (opts, callback = () => console.log('space callback'), actions_callback = null) {
   const { id, sdb } = await get(opts.sid)
   const on = {
     style: inject_style
@@ -934,23 +1422,54 @@ async function component (opts, callback = () => console.log('space callback')) 
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
   <div class="space">
+    <actions-placeholder></actions-placeholder>
     <console-history-placeholder></console-history-placeholder>
   </div>`
 
+  const actions_placeholder = shadow.querySelector('actions-placeholder')
   const console_placeholder = shadow.querySelector('console-history-placeholder')
   let console_history_el = null
+  let actions_el = null
 
   const subs = await sdb.watch(onbatch)
+
+  actions_el = await actions(subs[1], (action_data) => {
+    console.log('Action selected:', action_data)
+  }, actions_callback)
+  actions_el.classList.add('actions')
+  actions_placeholder.replaceWith(actions_el)
   
-  // Create console history and store reference for external control
   console_history_el = await console_history(subs[0], callback)
   console_history_el.classList.add('console-history')
   console_placeholder.replaceWith(console_history_el)
   
-  // Expose toggle method on the space element for external control
-  el.toggleConsoleHistory = () => {
+  el.toggle_console_history = () => {
     if (console_history_el && console_history_el.toggleVisibility) {
       console_history_el.toggleVisibility()
+    }
+  }
+
+  el.show_actions = () => {
+    if (actions_el && actions_el.show_actions) {
+      actions_el.show_actions()
+    }
+  }
+
+  el.hide_actions = () => {
+    if (actions_el && actions_el.hide_actions) {
+      actions_el.hide_actions()
+    }
+  }
+
+  el.toggle_actions = () => {
+    if (actions_el && actions_el.toggle_actions) {
+      actions_el.toggle_actions()
+    }
+  }
+
+  el.filter_actions = (search_term) => {
+    if (actions_el && actions_el.filter_actions) {
+      actions_el.filter_actions(search_term)
     }
   }
 
@@ -975,6 +1494,9 @@ function fallback_module () {
     _: {
       'console_history': {
         $: ''
+      },
+      'actions': {
+        $: ''
       }
     }
   }
@@ -987,7 +1509,17 @@ function fallback_module () {
           mapping: {
             'style': 'style',
             'commands': 'commands',
-            'icons': 'icons'
+            'icons': 'icons',
+            'scroll': 'scroll'
+          }
+        },
+        'actions': {
+          0: '',
+          mapping: {
+            'style': 'style',
+            'actions': 'actions',
+            'icons': 'icons',
+            'hardcons': 'hardcons'
           }
         }
       },
@@ -1008,6 +1540,10 @@ function fallback_module () {
                 position: relative;
                 width: 100%;
               }
+              .actions {
+                position: relative;
+                width: 100%;
+              }
             `
           }
         }
@@ -1017,7 +1553,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/space.js")
-},{"STATE":1,"console_history":3}],7:[function(require,module,exports){
+},{"STATE":1,"actions":3,"console_history":4}],8:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1192,7 +1728,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/index.js")
-},{"STATE":1}],8:[function(require,module,exports){
+},{"STATE":1}],9:[function(require,module,exports){
 (function (__filename){(function (){
 const state = require('STATE')
 const state_db = state(__filename)
@@ -1332,7 +1868,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/tabsbar/index.js")
-},{"STATE":1,"tabs":7,"task_manager":9}],9:[function(require,module,exports){
+},{"STATE":1,"tabs":8,"task_manager":10}],10:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1417,7 +1953,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager.js")
-},{"STATE":1}],10:[function(require,module,exports){
+},{"STATE":1}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1428,7 +1964,7 @@ const tabsbar = require('tabsbar')
 
 module.exports = taskbar
 
-async function taskbar(opts, callback = () => console.log('taskbar callback')) {
+async function taskbar(opts, callback = () => console.log('taskbar callback'), actions_callback = null) {
   const { id, sdb } = await get(opts.sid)
   const on = {
     style: inject_style
@@ -1448,7 +1984,7 @@ async function taskbar(opts, callback = () => console.log('taskbar callback')) {
 
   const subs = await sdb.watch(onbatch)
   
-  const action_bar_el = await action_bar(subs[0], callback)
+  const action_bar_el = await action_bar(subs[0], callback, actions_callback)
   action_bar_el.classList.add('replaced-action-bar')
   action_bar_slot.replaceWith(action_bar_el)
 
@@ -1508,7 +2044,7 @@ function fallback_module() {
             raw: `
               .taskbar-container {
                 display: flex;
-                background: rgb(255, 255, 255);
+                background: #2d2d2d;
                 column-gap: 1px;
               }
               .replaced-tabsbar {
@@ -1532,7 +2068,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/index.js")
-},{"STATE":1,"action_bar":2,"tabsbar":8}],11:[function(require,module,exports){
+},{"STATE":1,"action_bar":2,"tabsbar":9}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1564,19 +2100,41 @@ async function theme_widget (opts) {
   
   let space_el = null
   let taskbar_el = null
-  
-  // Callback to handle console history toggle
+
   const console_history_callback = () => {
-    if (space_el && space_el.toggleConsoleHistory) {
-      space_el.toggleConsoleHistory()
+    if (space_el && space_el.toggle_console_history) {
+      space_el.toggle_console_history()
+    }
+  }
+
+  const actions_callback = {
+    show_actions: () => {
+      if (space_el && space_el.show_actions) {
+        space_el.show_actions()
+      }
+    },
+    hide_actions: () => {
+      if (space_el && space_el.hide_actions) {
+        space_el.hide_actions()
+      }
+    },
+    toggle_actions: () => {
+      if (space_el && space_el.toggle_actions) {
+        space_el.toggle_actions()
+      }
+    },
+    filter_actions: (search_term) => {
+      if (space_el && space_el.filter_actions) {
+        space_el.filter_actions(search_term)
+      }
     }
   }
   
-  space_el = await space(subs[0])
+  space_el = await space(subs[0], console_history_callback, actions_callback)
   space_el.classList.add('space')
   space_slot.replaceWith(space_el)
 
-  taskbar_el = await taskbar(subs[1], console_history_callback)
+  taskbar_el = await taskbar(subs[1], console_history_callback, actions_callback)
   taskbar_slot.replaceWith(taskbar_el)
 
   return el
@@ -1646,7 +2204,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/index.js")
-},{"STATE":1,"space":6,"taskbar":10}],12:[function(require,module,exports){
+},{"STATE":1,"space":7,"taskbar":11}],13:[function(require,module,exports){
 const hash = '5052beac1d8395d0a62c664c50af74ff1bd9c75e'
 const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/' + hash + '/'
 const init_url = prefix + 'doc/state/example/init.js'
@@ -1660,7 +2218,7 @@ fetch(init_url).then(res => res.text()).then(async source => {
   await init(args, prefix)
   require('./page')
 })
-},{"./page":13}],13:[function(require,module,exports){
+},{"./page":14}],14:[function(require,module,exports){
 (function (__filename){(function (){
 localStorage.clear()
 const STATE = require('../src/node_modules/STATE')
@@ -1676,6 +2234,7 @@ const tabsbar = require('../src/node_modules/tabsbar')
 const action_bar = require('../src/node_modules/action_bar')
 const space = require('../src/node_modules/space')
 const tabs = require('../src/node_modules/tabs')
+const console_history = require('../src/node_modules/console_history')
 
 const imports = {
   theme_widget,
@@ -1683,7 +2242,8 @@ const imports = {
   tabsbar,
   action_bar,
   space,
-  tabs
+  tabs,
+  console_history
 }
 config().then(() => boot({ sid: '' }))
 
@@ -1921,6 +2481,16 @@ function fallback_module () {
       'style': 'style'
     }
   }
+  subs['../src/node_modules/console_history'] = {
+    $: '',
+    0: '',
+    mapping: {
+      'style': 'style',
+      'commands': 'commands',
+      'icons': 'icons',
+      'scroll': 'scroll'
+    }
+  }
   subs[menuname] = { 
     $: '',
     0: '',
@@ -1987,4 +2557,4 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/menu":4,"../src/node_modules/space":6,"../src/node_modules/tabs":7,"../src/node_modules/tabsbar":8,"../src/node_modules/taskbar":10,"../src/node_modules/theme_widget":11}]},{},[12]);
+},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/console_history":4,"../src/node_modules/menu":5,"../src/node_modules/space":7,"../src/node_modules/tabs":8,"../src/node_modules/tabsbar":9,"../src/node_modules/taskbar":11,"../src/node_modules/theme_widget":12}]},{},[13]);
