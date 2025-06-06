@@ -32,16 +32,18 @@ async function action_bar(opts, protocol) {
   const quick_placeholder = shadow.querySelector('quick-actions')
   let console_icon = {}
   const subs = await sdb.watch(onbatch)
-  const send = protocol(msg => onmessage(msg))
-  const _ = { up: { send, on: onmessage }, quick_actions: null }
-  
-  console.log(subs)
+  let send = null
+  let _ = null
+  if(protocol){
+    send = protocol(msg => onmessage(msg))
+    _ = { up: send, send_quick_actions: null }
+  }
   history_icon.innerHTML = console_icon
   history_icon.onclick = () => {
     console.log('calling:', 'Command History')
-    _.up.send({ type: 'console_history_toggle', data: {} })
+    _.up({ type: 'console_history_toggle', data: {} })
   }
-  const element = await quick_actions(subs[0], quick_actions_protocol)
+  const element = protocol ? await quick_actions(subs[0], quick_actions_protocol) : await quick_actions(subs[0])
   element.classList.add('replaced-quick-actions')
   quick_placeholder.replaceWith(element)
   return el
@@ -50,40 +52,20 @@ async function action_bar(opts, protocol) {
   // PROTOCOLS  
   // ---------
   function quick_actions_protocol (send) {
-    _.quick_actions = { send, on }
-    on.id = id
-    on.name = 'action_bar'
+    _.send_quick_actions = send
     return on
     function on ({ type, data }) { 
-      console.log('[quick_actions->action_bar]', type, data)
-      if (type === 'text_bar_clicked') {
-        console.log('quick action text bar clicked')
-      }
-      // Forward quick_actions messages up to taskbar
-      _.up.send({ type: `quick_actions:${type}`, data })
+
+      _.up({ type, data })
     }
   }
   
   function onmessage ({ type, data }) {
-    console.log(`[taskbar->action_bar]`, type, data)
-    
-    // Handle console history toggle
+
     if (type === 'console_history_toggle') {
-      // Console history is handled by space component, just acknowledge
       return
     }
-    
-    // Route quick_actions messages
-    if (type.startsWith('quick_actions:')) {
-      const action_type = type.replace('quick_actions:', '')
-      _.quick_actions.send({ type: action_type, data })
-    }
-    
-    // Route quick_actions_callback messages
-    if (type.startsWith('quick_actions_callback:')) {
-      const action_type = type.replace('quick_actions_callback:', '')
-      _.quick_actions.send({ type: action_type, data })
-    }
+    _.send_quick_actions({ type, data })
   }
 
   function onbatch (batch) {
@@ -222,11 +204,13 @@ async function actions(opts, protocol) {
   let is_visible = false
 
   const subs = await sdb.watch(onbatch)
-  const send = protocol(msg => onmessage(msg))
-  const _ = { up: { send, on: onmessage } }
-  const api = { toggle, show, hide, filter, set_selected_action }
-
-  if(protocol.toString() != (() => console.log('action selected')).toString()) el.style.display = 'none'
+  let send = null
+  let _ = null
+  if (protocol) {
+    send = protocol(msg => onmessage(msg))
+    _ = { up: send }
+  }
+    const api = { toggle, show, hide, filter, set_selected_action }
 
   return el
 
@@ -261,7 +245,7 @@ async function actions(opts, protocol) {
   
   function set_selected_action (msg) {
     // This will be sent back to quick_actions via the routing system
-    _.up.send({ type: 'quick_actions_callback:set_selected_action', data: msg.data })
+    _.up({ type: 'quick_actions_callback:set_selected_action', data: msg.data })
   }
 
   function onbatch(batch) {
@@ -318,7 +302,7 @@ async function actions(opts, protocol) {
     `
     
     action_item.onclick = () => {
-      _.up.send({ type: 'action_selected', data: action_data })
+      _.up({ type: 'action_selected', data: action_data })
       set_selected_action({ data: action_data })
       hide()
     }
@@ -541,12 +525,13 @@ async function console_history (opts, protocol) {
   let is_visible = false
 
   const subs = await sdb.watch(onbatch)
-  const send = protocol(msg => onmessage(msg))
-  const _ = { up: { send, on: onmessage } }
+  let send = null
+  let _ = null
+  if(protocol){
+    send = protocol(msg => onmessage(msg))
+    _ = { up: send }
+  }
   const api = { toggle }
-
-  if(protocol.toString() != (() => console.log('console history toggle')).toString()) el.style.display = 'none'
-
   return el
 
   function onmessage ({ type, data }) {
@@ -601,7 +586,7 @@ async function console_history (opts, protocol) {
 
     command_el.onclick = function () {
       console.log('Command clicked:', command_data.command)
-      _.up.send({ type: 'command_clicked', data: command_data })
+      _.up({ type: 'command_clicked', data: command_data })
     }
 
     return command_el
@@ -1155,21 +1140,24 @@ async function quick_actions(opts, protocol) {
   let is_input_active = false
   let selected_action = null
   
-  const send = protocol(msg => onmessage(msg))
-  const _ = { up: { send, on: onmessage } }
-
+  let send = null
+  let _ = null
+  if(protocol){
+    send = protocol(msg => onmessage(msg))
+    _ = { up: send }
+  }
   text_bar.onclick = activate_input_field
   close_btn.onclick = deactivate_input_field
   
   submit_btn.onclick = () => {
     if (selected_action) {
       console.log('Selected action submitted:', selected_action)
-      _.up.send({ type: 'action_submitted', data: selected_action })
+      _.up({ type: 'action_submitted', data: selected_action })
     }
   }
   
   input_field.oninput = (e) => {
-    _.up.send({ type: 'filter_actions', data: e.target.value })
+    _.up({ type: 'filter_actions', data: e.target.value })
   }
 
   const subs = await sdb.watch(onbatch)
@@ -1199,8 +1187,8 @@ async function quick_actions(opts, protocol) {
     input_wrapper.style.display = 'flex'
     input_field.focus()
     
-    _.up.send({ type: 'show_actions', data: {} })
-    _.up.send({ type: 'text_bar_clicked', data: {} })
+    _.up({ type: 'show_actions', data: {} })
+    _.up({ type: 'text_bar_clicked', data: {} })
   }
 
   function deactivate_input_field() {
@@ -1215,7 +1203,7 @@ async function quick_actions(opts, protocol) {
     selected_action = null
     update_input_display()
     
-    _.up.send({ type: 'hide_actions', data: {} })
+    _.up({ type: 'hide_actions', data: {} })
   }
 
   function update_input_display() {
@@ -1513,15 +1501,19 @@ async function component (opts, protocol) {
   let actions_el = null
 
   const subs = await sdb.watch(onbatch)
-  const send = protocol(msg => onmessage(msg))
-  const _ = { up: { send, on: onmessage }, actions: null, console_history: null }
+  let send = null
+  let _ = null
+  if(protocol) {
+    send = protocol(msg => onmessage(msg))
+    _ = { up: send, actions: null, console_history: null }
+  }
   const api = { toggle_console_history, show_actions, hide_actions, toggle_actions, filter_actions }
-
-  actions_el = await actions(subs[1], actions_protocol)
+  
+  actions_el = protocol ? await actions(subs[1], actions_protocol) : await actions(subs[1])
   actions_el.classList.add('actions')
   actions_placeholder.replaceWith(actions_el)
   
-  console_history_el = await console_history(subs[0], console_history_protocol)
+  console_history_el = protocol ? await console_history(subs[0], console_history_protocol) : await console_history(subs[0])
   console_history_el.classList.add('console-history')
   console_placeholder.replaceWith(console_history_el)
   return el
@@ -1530,30 +1522,26 @@ async function component (opts, protocol) {
   // PROTOCOLS
   // ---------
   function console_history_protocol (send) {
-    _.console_history = { send, on }
-    on.id = id
-    on.name = 'space'
+    _.send_console_history = send
     return on
     function on ({ type, data }) { 
       console.log('[console_history->space]', type, data)
       if (type === 'toggle') {
-        _.up.send({ type: 'toggle_console_history', data })
+        _.up({ type: 'toggle_console_history', data })
       }
     }
   }
   
   function actions_protocol (send) {
-    _.actions = { send, on }
-    on.id = id
-    on.name = 'space'
+    _.send_actions = send
     return on
     function on ({ type, data }) { 
       console.log('[actions->space]', type, data)
       if (type === 'action_selected') {
-        _.up.send({ type: 'actions:action_selected', data })
+        _.up({ type: 'actions:action_selected', data })
       }
       if (type.startsWith('quick_actions_callback:')) {
-        _.up.send({ type, data })
+        _.up({ type, data })
       }
     }
   }
@@ -1566,13 +1554,13 @@ async function component (opts, protocol) {
     // Route actions messages to actions component
     if (type.startsWith('actions:')) {
       const action_type = type.replace('actions:', '')
-      _.actions.send({ type: action_type, data })
+      _.send_actions({ type: action_type, data })
     }
     
     // Route quick_actions messages to actions component (for set_selected_action)
     if (type.startsWith('quick_actions:')) {
       const action_type = type.replace('quick_actions:', '')
-      _.actions.send({ type: action_type, data })
+      _.send_actions({ type: action_type, data })
     }
     
     throw new Error('invalid msg', { cause: { type, data } })
@@ -1582,19 +1570,19 @@ async function component (opts, protocol) {
   // API
   // ---
   function toggle_console_history (msg) { 
-    if (_.console_history) _.console_history.send({ type: 'toggle', data: msg.data }) 
+    if (_.console_history) _.send_console_history({ type: 'toggle', data: msg.data }) 
   }
   function show_actions (msg) { 
-    if (_.actions) _.actions.send({ type: 'show', data: msg.data }) 
+    if (_.actions) _.send_actions({ type: 'show', data: msg.data }) 
   }
   function hide_actions (msg) { 
-    if (_.actions) _.actions.send({ type: 'hide', data: msg.data }) 
+    if (_.actions) _.send_actions({ type: 'hide', data: msg.data }) 
   }
   function toggle_actions (msg) { 
-    if (_.actions) _.actions.send({ type: 'toggle', data: msg.data }) 
+    if (_.actions) _.send_actions({ type: 'toggle', data: msg.data }) 
   }
   function filter_actions (msg) { 
-    if (_.actions) _.actions.send({ type: 'filter', data: msg.data }) 
+    if (_.actions) _.send_actions({ type: 'filter', data: msg.data }) 
   }
 
   function onbatch (batch) {
@@ -2105,14 +2093,17 @@ async function taskbar(opts, protocol) {
   const tabsbar_slot = shadow.querySelector('.tabsbar-slot')
 
   const subs = await sdb.watch(onbatch)
-  const send = protocol(msg => onmessage(msg))
-  const _ = { up: { send, on: onmessage }, action_bar: null, tabsbar: null }
-  
-  const action_bar_el = await action_bar(subs[0], action_bar_protocol)
+  let send = null
+  let _ = null
+  if(protocol) {
+    send = protocol(msg => onmessage(msg))
+    _ = { up: send, action_bar: null, tabsbar: null }
+  }
+  const action_bar_el = protocol ? await action_bar(subs[0], action_bar_protocol) : await action_bar(subs[0])
   action_bar_el.classList.add('replaced-action-bar')
   action_bar_slot.replaceWith(action_bar_el)
 
-  const tabsbar_el = await tabsbar(subs[1])
+  const tabsbar_el = protocol ? await tabsbar(subs[1], 'tabsbar_protocol') : await tabsbar(subs[1])
   tabsbar_el.classList.add('replaced-tabsbar')
   tabsbar_slot.replaceWith(tabsbar_el)
 
@@ -2122,46 +2113,15 @@ async function taskbar(opts, protocol) {
   // PROTOCOLS  
   // ---------
   function action_bar_protocol (send) {
-    _.action_bar = { send, on }
-    on.id = id
-    on.name = 'taskbar'
+    _.send_action_bar = send
     return on
     function on ({ type, data }) { 
-      console.log('[action_bar->taskbar]', type, data)
-      // Forward console history messages up to theme_widget
-      if (type === 'console_history_toggle') {
-        _.up.send({ type: 'console_history:toggle', data })
-      }
-      // Forward action-related messages up to theme_widget
-      if (type.startsWith('quick_actions:')) {
-        _.up.send({ type: `actions:${type.replace('quick_actions:', '')}`, data })
-      }
+      _.up({ type, data })
     }
   }
   
   function onmessage ({ type, data }) {
-    console.log(`[theme_widget->taskbar]`, type, data)
-    
-    // Route toggle_console_history to action_bar
-    if (type === 'toggle_console_history') {
-      _.action_bar.send({ type: 'console_history_toggle', data })
-    }
-    
-    // Route actions messages to action_bar
-    if (type.startsWith('actions:')) {
-      const action_type = type.replace('actions:', '')
-      _.action_bar.send({ type: `quick_actions:${action_type}`, data })
-    }
-    
-    // Route action_selected to action_bar for quick_actions
-    if (type === 'action_selected') {
-      _.action_bar.send({ type: 'quick_actions:set_selected_action', data })
-    }
-    
-    // Route quick_actions_callback messages
-    if (type.startsWith('quick_actions_callback:')) {
-      _.action_bar.send({ type, data })
-    }
+    _.send_action_bar({ type, data })
   }
 
   function onbatch(batch) {
@@ -2270,7 +2230,7 @@ async function theme_widget (opts) {
   
   let space_el = null
   let taskbar_el = null
-  const _ = { space: null, taskbar: null }
+  const _ = { send_space: null, send_taskbar: null }
   
   space_el = await space(subs[0], space_protocol)
   space_el.classList.add('space')
@@ -2285,29 +2245,26 @@ async function theme_widget (opts) {
   // PROTOCOLS
   // ---------
   function space_protocol (send) {
-    _.space = { send, on }
-    on.id = id
-    on.name = 'theme_widget'
+    _.send_space = send
     return on
     function on ({ type, data }) {
       console.log('[space->theme_widget]', type, data)
       // Route messages to taskbar
       if (type === 'toggle_console_history' || type.startsWith('actions:') || type === 'action_selected' || type.startsWith('quick_actions_callback:')) {
-        _.taskbar.send({ type, data })
+        _.send_taskbar({ type, data })
       }
     }
   }
 
   function taskbar_protocol (send) {
-    _.taskbar = { send, on }
-    on.id = id
-    on.name = 'theme_widget'
+    _.send_taskbar = send
     return on
     function on ({ type, data }) {
-      console.log('[taskbar->theme_widget]', type, data)
+      console.log(`[${type}->theme_widget]`, type, data)
       // Route messages to space
-      if (type.startsWith('console_history:') || type === 'action_selected' || type.startsWith('quick_actions:')) {
-        _.space.send({ type, data })
+      if (type === 'action_selected') {
+        _.send_space({ type, data })
+        console.log('theme_widget->space', data)
       }
     }
   }
