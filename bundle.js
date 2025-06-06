@@ -8,7 +8,7 @@ const { sdb, get } = statedb(fallback_module)
 
 module.exports = action_bar
 const quick_actions = require('quick_actions')
-async function action_bar(opts, callback = () => console.log('calling:', 'Command History'), actions_callback = null) {
+async function action_bar(opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const on = {
     style: style_inject,
@@ -32,13 +32,59 @@ async function action_bar(opts, callback = () => console.log('calling:', 'Comman
   const quick_placeholder = shadow.querySelector('quick-actions')
   let console_icon = {}
   const subs = await sdb.watch(onbatch)
+  const send = protocol(msg => onmessage(msg))
+  const _ = { up: { send, on: onmessage }, quick_actions: null }
+  
   console.log(subs)
   history_icon.innerHTML = console_icon
-  history_icon.onclick = callback
-  const element = await quick_actions(subs[0], () => console.log('quick action text bar clicked'), actions_callback)
+  history_icon.onclick = () => {
+    console.log('calling:', 'Command History')
+    _.up.send({ type: 'console_history_toggle', data: {} })
+  }
+  const element = await quick_actions(subs[0], quick_actions_protocol)
   element.classList.add('replaced-quick-actions')
   quick_placeholder.replaceWith(element)
   return el
+
+  // ---------
+  // PROTOCOLS  
+  // ---------
+  function quick_actions_protocol (send) {
+    _.quick_actions = { send, on }
+    on.id = id
+    on.name = 'action_bar'
+    return on
+    function on ({ type, data }) { 
+      console.log('[quick_actions->action_bar]', type, data)
+      if (type === 'text_bar_clicked') {
+        console.log('quick action text bar clicked')
+      }
+      // Forward quick_actions messages up to taskbar
+      _.up.send({ type: `quick_actions:${type}`, data })
+    }
+  }
+  
+  function onmessage ({ type, data }) {
+    console.log(`[taskbar->action_bar]`, type, data)
+    
+    // Handle console history toggle
+    if (type === 'console_history_toggle') {
+      // Console history is handled by space component, just acknowledge
+      return
+    }
+    
+    // Route quick_actions messages
+    if (type.startsWith('quick_actions:')) {
+      const action_type = type.replace('quick_actions:', '')
+      _.quick_actions.send({ type: action_type, data })
+    }
+    
+    // Route quick_actions_callback messages
+    if (type.startsWith('quick_actions_callback:')) {
+      const action_type = type.replace('quick_actions_callback:', '')
+      _.quick_actions.send({ type: action_type, data })
+    }
+  }
 
   function onbatch (batch) {
     for (const { type, data } of batch) (on[type] || fail)(data, type)
@@ -149,7 +195,7 @@ const { sdb, get } = statedb(fallback_module)
 
 module.exports = actions
 
-async function actions(opts, callback = () => console.log('action selected'), quick_actions_callback = null) {
+async function actions(opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   
   const on = {
@@ -176,29 +222,47 @@ async function actions(opts, callback = () => console.log('action selected'), qu
   let is_visible = false
 
   const subs = await sdb.watch(onbatch)
+  const send = protocol(msg => onmessage(msg))
+  const _ = { up: { send, on: onmessage } }
+  const api = { toggle, show, hide, filter, set_selected_action }
 
-  el.toggle_actions = () => {
+  if(protocol.toString() != (() => console.log('action selected')).toString()) el.style.display = 'none'
+
+  return el
+
+  function onmessage ({ type, data }) {
+    console.log(`[space->actions]`, type, data)
+    const fn = api[type]
+    if (fn) return fn({ type, data })
+    throw new Error('invalid msg', { cause: { type, data } })
+  }
+  
+  // ---
+  // API
+  // ---
+  function toggle (msg) {
     is_visible = !is_visible
     el.style.display = is_visible ? 'block' : 'none'
   }
-
-  el.show_actions = () => {
+  
+  function show (msg) {
     is_visible = true
     el.style.display = 'block'
   }
-
-  el.hide_actions = () => {
+  
+  function hide (msg) {
     is_visible = false
     el.style.display = 'none'
   }
-
-  el.filter_actions = (search_term) => {
-    filter_actions_by_search(search_term)
+  
+  function filter (msg) {
+    filter_actions_by_search(msg.data)
   }
   
-  if(callback.toString() != (() => console.log('action selected')).toString()) el.style.display = 'none'
-
-  return el
+  function set_selected_action (msg) {
+    // This will be sent back to quick_actions via the routing system
+    _.up.send({ type: 'quick_actions_callback:set_selected_action', data: msg.data })
+  }
 
   function onbatch(batch) {
     for (const { type, data } of batch) (on[type] || fail)(data, type)
@@ -254,12 +318,9 @@ async function actions(opts, callback = () => console.log('action selected'), qu
     `
     
     action_item.onclick = () => {
-      callback(action_data)
-      if (quick_actions_callback && quick_actions_callback.set_selected_action) {
-        quick_actions_callback.set_selected_action(action_data)
-      }
-      
-      el.hide_actions()
+      _.up.send({ type: 'action_selected', data: action_data })
+      set_selected_action({ data: action_data })
+      hide()
     }
     
     actions_menu.appendChild(action_item)
@@ -455,7 +516,7 @@ const { sdb, get } = statedb(fallback_module)
 
 module.exports = console_history
 
-async function console_history (opts, callback = () => console.log('console history toggle')) {
+async function console_history (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const on = {
     style: inject_style,
@@ -480,11 +541,27 @@ async function console_history (opts, callback = () => console.log('console hist
   let is_visible = false
 
   const subs = await sdb.watch(onbatch)
-  if(callback.toString() != (() => console.log('console history toggle')).toString()) el.style.display = 'none'
+  const send = protocol(msg => onmessage(msg))
+  const _ = { up: { send, on: onmessage } }
+  const api = { toggle }
 
-  el.toggleVisibility = toggle_visibility
+  if(protocol.toString() != (() => console.log('console history toggle')).toString()) el.style.display = 'none'
 
   return el
+
+  function onmessage ({ type, data }) {
+    console.log(`[space->console_history]`, type, data)
+    const fn = api[type]
+    if (fn) return fn({ type, data })
+    throw new Error('invalid msg', { cause: { type, data } })
+  }
+  
+  // ---
+  // API
+  // ---
+  function toggle (msg) {
+    toggle_visibility()
+  }
 
   function toggle_visibility () {
     is_visible = !is_visible
@@ -524,7 +601,7 @@ async function console_history (opts, callback = () => console.log('console hist
 
     command_el.onclick = function () {
       console.log('Command clicked:', command_data.command)
-      if (callback) callback(command_data)
+      _.up.send({ type: 'command_clicked', data: command_data })
     }
 
     return command_el
@@ -1033,7 +1110,7 @@ const { sdb, get } = statedb(fallback_module)
 
 module.exports = quick_actions
 
-async function quick_actions(opts, callback = () => console.log('quick action text bar clicked'), actions_callback = null) {
+async function quick_actions(opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   
   const on = {
@@ -1077,31 +1154,41 @@ async function quick_actions(opts, callback = () => console.log('quick action te
   let defaults = []
   let is_input_active = false
   let selected_action = null
+  
+  const send = protocol(msg => onmessage(msg))
+  const _ = { up: { send, on: onmessage } }
 
   text_bar.onclick = activate_input_field
   close_btn.onclick = deactivate_input_field
   
-  submit_btn.onclick = () => selected_action ? console.log('Selected action submitted:', selected_action) : null
-  
-  input_field.oninput = (e) => {
-    if (actions_callback && actions_callback.filter_actions) {
-      actions_callback.filter_actions(e.target.value)
+  submit_btn.onclick = () => {
+    if (selected_action) {
+      console.log('Selected action submitted:', selected_action)
+      _.up.send({ type: 'action_submitted', data: selected_action })
     }
   }
-
-  el.set_selected_action = (action_data) => {
-    selected_action = action_data
-    update_input_display()
-  }
-
-  if (actions_callback) {
-    actions_callback.set_selected_action = el.set_selected_action
+  
+  input_field.oninput = (e) => {
+    _.up.send({ type: 'filter_actions', data: e.target.value })
   }
 
   const subs = await sdb.watch(onbatch)
   submit_btn.innerHTML = hardcons.submit
   close_btn.innerHTML = hardcons.cross
   return el
+
+  function onmessage ({ type, data }) {
+    console.log(`[action_bar->quick_actions]`, type, data)
+    
+    if (type === 'set_selected_action') {
+      selected_action = data
+      update_input_display()
+    } else if (type === 'show_actions') {
+      activate_input_field()
+    } else if (type === 'hide_actions') {
+      deactivate_input_field()
+    }
+  }
 
   function activate_input_field() {
     is_input_active = true
@@ -1112,11 +1199,8 @@ async function quick_actions(opts, callback = () => console.log('quick action te
     input_wrapper.style.display = 'flex'
     input_field.focus()
     
-    if (actions_callback && actions_callback.show_actions) {
-      actions_callback.show_actions()
-    }
-    
-    callback()
+    _.up.send({ type: 'show_actions', data: {} })
+    _.up.send({ type: 'text_bar_clicked', data: {} })
   }
 
   function deactivate_input_field() {
@@ -1131,9 +1215,7 @@ async function quick_actions(opts, callback = () => console.log('quick action te
     selected_action = null
     update_input_display()
     
-    if (actions_callback && actions_callback.hide_actions) {
-      actions_callback.hide_actions()
-    }
+    _.up.send({ type: 'hide_actions', data: {} })
   }
 
   function update_input_display() {
@@ -1411,7 +1493,7 @@ const actions = require('actions')
 
 module.exports = component
 
-async function component (opts, callback = () => console.log('space callback'), actions_callback = null) {
+async function component (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const on = {
     style: inject_style
@@ -1431,48 +1513,89 @@ async function component (opts, callback = () => console.log('space callback'), 
   let actions_el = null
 
   const subs = await sdb.watch(onbatch)
+  const send = protocol(msg => onmessage(msg))
+  const _ = { up: { send, on: onmessage }, actions: null, console_history: null }
+  const api = { toggle_console_history, show_actions, hide_actions, toggle_actions, filter_actions }
 
-  actions_el = await actions(subs[1], (action_data) => {
-    console.log('Action selected:', action_data)
-  }, actions_callback)
+  actions_el = await actions(subs[1], actions_protocol)
   actions_el.classList.add('actions')
   actions_placeholder.replaceWith(actions_el)
   
-  console_history_el = await console_history(subs[0], callback)
+  console_history_el = await console_history(subs[0], console_history_protocol)
   console_history_el.classList.add('console-history')
   console_placeholder.replaceWith(console_history_el)
-  
-  el.toggle_console_history = () => {
-    if (console_history_el && console_history_el.toggleVisibility) {
-      console_history_el.toggleVisibility()
-    }
-  }
-
-  el.show_actions = () => {
-    if (actions_el && actions_el.show_actions) {
-      actions_el.show_actions()
-    }
-  }
-
-  el.hide_actions = () => {
-    if (actions_el && actions_el.hide_actions) {
-      actions_el.hide_actions()
-    }
-  }
-
-  el.toggle_actions = () => {
-    if (actions_el && actions_el.toggle_actions) {
-      actions_el.toggle_actions()
-    }
-  }
-
-  el.filter_actions = (search_term) => {
-    if (actions_el && actions_el.filter_actions) {
-      actions_el.filter_actions(search_term)
-    }
-  }
-
   return el
+
+  // ---------
+  // PROTOCOLS
+  // ---------
+  function console_history_protocol (send) {
+    _.console_history = { send, on }
+    on.id = id
+    on.name = 'space'
+    return on
+    function on ({ type, data }) { 
+      console.log('[console_history->space]', type, data)
+      if (type === 'toggle') {
+        _.up.send({ type: 'toggle_console_history', data })
+      }
+    }
+  }
+  
+  function actions_protocol (send) {
+    _.actions = { send, on }
+    on.id = id
+    on.name = 'space'
+    return on
+    function on ({ type, data }) { 
+      console.log('[actions->space]', type, data)
+      if (type === 'action_selected') {
+        _.up.send({ type: 'actions:action_selected', data })
+      }
+      if (type.startsWith('quick_actions_callback:')) {
+        _.up.send({ type, data })
+      }
+    }
+  }
+  
+  function onmessage ({ type, data }) {
+    console.log(`[theme_widget->space]`, type, data)
+    const fn = api[type]
+    if (fn) return fn({ type, data })
+    
+    // Route actions messages to actions component
+    if (type.startsWith('actions:')) {
+      const action_type = type.replace('actions:', '')
+      _.actions.send({ type: action_type, data })
+    }
+    
+    // Route quick_actions messages to actions component (for set_selected_action)
+    if (type.startsWith('quick_actions:')) {
+      const action_type = type.replace('quick_actions:', '')
+      _.actions.send({ type: action_type, data })
+    }
+    
+    throw new Error('invalid msg', { cause: { type, data } })
+  }
+  
+  // ---
+  // API
+  // ---
+  function toggle_console_history (msg) { 
+    if (_.console_history) _.console_history.send({ type: 'toggle', data: msg.data }) 
+  }
+  function show_actions (msg) { 
+    if (_.actions) _.actions.send({ type: 'show', data: msg.data }) 
+  }
+  function hide_actions (msg) { 
+    if (_.actions) _.actions.send({ type: 'hide', data: msg.data }) 
+  }
+  function toggle_actions (msg) { 
+    if (_.actions) _.actions.send({ type: 'toggle', data: msg.data }) 
+  }
+  function filter_actions (msg) { 
+    if (_.actions) _.actions.send({ type: 'filter', data: msg.data }) 
+  }
 
   function onbatch (batch) {
     for (const { type, data } of batch) {
@@ -1963,7 +2086,7 @@ const tabsbar = require('tabsbar')
 
 module.exports = taskbar
 
-async function taskbar(opts, callback = () => console.log('taskbar callback'), actions_callback = null) {
+async function taskbar(opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const on = {
     style: inject_style
@@ -1982,8 +2105,10 @@ async function taskbar(opts, callback = () => console.log('taskbar callback'), a
   const tabsbar_slot = shadow.querySelector('.tabsbar-slot')
 
   const subs = await sdb.watch(onbatch)
+  const send = protocol(msg => onmessage(msg))
+  const _ = { up: { send, on: onmessage }, action_bar: null, tabsbar: null }
   
-  const action_bar_el = await action_bar(subs[0], callback, actions_callback)
+  const action_bar_el = await action_bar(subs[0], action_bar_protocol)
   action_bar_el.classList.add('replaced-action-bar')
   action_bar_slot.replaceWith(action_bar_el)
 
@@ -1992,6 +2117,52 @@ async function taskbar(opts, callback = () => console.log('taskbar callback'), a
   tabsbar_slot.replaceWith(tabsbar_el)
 
   return el
+
+  // ---------
+  // PROTOCOLS  
+  // ---------
+  function action_bar_protocol (send) {
+    _.action_bar = { send, on }
+    on.id = id
+    on.name = 'taskbar'
+    return on
+    function on ({ type, data }) { 
+      console.log('[action_bar->taskbar]', type, data)
+      // Forward console history messages up to theme_widget
+      if (type === 'console_history_toggle') {
+        _.up.send({ type: 'console_history:toggle', data })
+      }
+      // Forward action-related messages up to theme_widget
+      if (type.startsWith('quick_actions:')) {
+        _.up.send({ type: `actions:${type.replace('quick_actions:', '')}`, data })
+      }
+    }
+  }
+  
+  function onmessage ({ type, data }) {
+    console.log(`[theme_widget->taskbar]`, type, data)
+    
+    // Route toggle_console_history to action_bar
+    if (type === 'toggle_console_history') {
+      _.action_bar.send({ type: 'console_history_toggle', data })
+    }
+    
+    // Route actions messages to action_bar
+    if (type.startsWith('actions:')) {
+      const action_type = type.replace('actions:', '')
+      _.action_bar.send({ type: `quick_actions:${action_type}`, data })
+    }
+    
+    // Route action_selected to action_bar for quick_actions
+    if (type === 'action_selected') {
+      _.action_bar.send({ type: 'quick_actions:set_selected_action', data })
+    }
+    
+    // Route quick_actions_callback messages
+    if (type.startsWith('quick_actions_callback:')) {
+      _.action_bar.send({ type, data })
+    }
+  }
 
   function onbatch(batch) {
     for (const { type, data } of batch) (on[type] || fail)(data, type)
@@ -2099,44 +2270,47 @@ async function theme_widget (opts) {
   
   let space_el = null
   let taskbar_el = null
-
-  const console_history_callback = () => {
-    if (space_el && space_el.toggle_console_history) {
-      space_el.toggle_console_history()
-    }
-  }
-
-  const actions_callback = {
-    show_actions: () => {
-      if (space_el && space_el.show_actions) {
-        space_el.show_actions()
-      }
-    },
-    hide_actions: () => {
-      if (space_el && space_el.hide_actions) {
-        space_el.hide_actions()
-      }
-    },
-    toggle_actions: () => {
-      if (space_el && space_el.toggle_actions) {
-        space_el.toggle_actions()
-      }
-    },
-    filter_actions: (search_term) => {
-      if (space_el && space_el.filter_actions) {
-        space_el.filter_actions(search_term)
-      }
-    }
-  }
+  const _ = { space: null, taskbar: null }
   
-  space_el = await space(subs[0], console_history_callback, actions_callback)
+  space_el = await space(subs[0], space_protocol)
   space_el.classList.add('space')
   space_slot.replaceWith(space_el)
 
-  taskbar_el = await taskbar(subs[1], console_history_callback, actions_callback)
+  taskbar_el = await taskbar(subs[1], taskbar_protocol)
   taskbar_slot.replaceWith(taskbar_el)
 
   return el
+
+  // ---------
+  // PROTOCOLS
+  // ---------
+  function space_protocol (send) {
+    _.space = { send, on }
+    on.id = id
+    on.name = 'theme_widget'
+    return on
+    function on ({ type, data }) {
+      console.log('[space->theme_widget]', type, data)
+      // Route messages to taskbar
+      if (type === 'toggle_console_history' || type.startsWith('actions:') || type === 'action_selected' || type.startsWith('quick_actions_callback:')) {
+        _.taskbar.send({ type, data })
+      }
+    }
+  }
+
+  function taskbar_protocol (send) {
+    _.taskbar = { send, on }
+    on.id = id
+    on.name = 'theme_widget'
+    return on
+    function on ({ type, data }) {
+      console.log('[taskbar->theme_widget]', type, data)
+      // Route messages to space
+      if (type.startsWith('console_history:') || type === 'action_selected' || type.startsWith('quick_actions:')) {
+        _.space.send({ type, data })
+      }
+    }
+  }
 
   function onbatch (batch) {
     for (const { type, data } of batch) {
@@ -2204,7 +2378,7 @@ function fallback_module () {
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/index.js")
 },{"STATE":1,"space":7,"taskbar":11}],13:[function(require,module,exports){
-const hash = '5052beac1d8395d0a62c664c50af74ff1bd9c75e'
+const hash = 'bc2766416051e07aa6d29da131181ff69668aea8'
 const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/' + hash + '/'
 const init_url = prefix + 'doc/state/example/init.js'
 const args = arguments
