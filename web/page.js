@@ -71,6 +71,7 @@ async function boot (opts) {
     <div class="components-wrapper"></div>
   </div>`
   el.style.margin = 0
+  el.style.backgroundColor = '#d8dee9'
   // ----------------------------------------
   // ELEMENTS
   // ----------------------------------------
@@ -143,7 +144,7 @@ async function create_component (entries_obj) {
           setTimeout(() => {
             target_wrapper.scrollIntoView({ behavior: 'auto', block: 'center' })
             clear_selection_highlight()
-            target_wrapper.style.backgroundColor = 'lightblue'
+            target_wrapper.style.backgroundColor = '#2e3440'
             current_selected_wrapper = target_wrapper
           }, 100)
         }
@@ -350,7 +351,7 @@ function fallback_module () {
             resize: both;
             overflow: auto;
             border-radius: 0px;
-            background-color: #ffffff;
+            background-color: #eceff4;
             min-height: 50px;
           }
           .component-content {
