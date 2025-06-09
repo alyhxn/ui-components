@@ -1734,20 +1734,17 @@ async function tabbed_editor(opts, protocol) {
         toggle_tab(data)
         break
       default:
-        // Handle other message types
     }
   }
 
   function switch_to_tab(tab_data) {
     if (active_tab === tab_data.id) {
-      // Tab already active, do nothing or toggle view
       return
     }
     
     active_tab = tab_data.id
     create_editor(tab_data)
     
-    // Notify upstream about tab switch
     if (_) {
       _.up({ type: 'tab_switched', data: tab_data })
     }
@@ -1755,11 +1752,9 @@ async function tabbed_editor(opts, protocol) {
 
   function toggle_tab(tab_data) {
     if (active_tab === tab_data.id) {
-      // Hide current tab
       hide_editor()
       active_tab = null
     } else {
-      // Switch to this tab
       switch_to_tab(tab_data)
     }
   }
@@ -1770,21 +1765,18 @@ async function tabbed_editor(opts, protocol) {
       active_tab = null
     }
     
-    // Notify upstream about tab closure
     if (_) {
       _.up({ type: 'tab_closed', data: tab_data })
     }
   }
 
   function create_editor(tab_data) {
-    // Handle different data formats
     let parsed_data = JSON.parse(tab_data[0])
     const file_content = files[parsed_data.id] || ''
     console.log('Creating editor for:', parsed_data)
     const file_extension = get_file_extension(parsed_data.name || parsed_data.id)
     const syntax_rules = highlight_rules[file_extension] || {}
 
-    // Clear current editor
     editor_content.innerHTML = ''
 
     const editor = document.createElement('div')
@@ -1813,30 +1805,12 @@ async function tabbed_editor(opts, protocol) {
     editor_content.appendChild(editor)
     current_editor = { editor, code_area, line_numbers, syntax_overlay, tab_data: parsed_data }
     
-    // Set up event listeners
-    code_area.oninput = () => {
-      update_line_numbers()
-      apply_syntax_highlighting()
-      save_file_content()
-    }
+    code_area.oninput = handle_code_input
+    code_area.onscroll = handle_code_scroll
+    syntax_overlay.onscroll = handle_overlay_scroll
     
-    code_area.onscroll = () => {
-      line_numbers.scrollTop = code_area.scrollTop
-      syntax_overlay.scrollTop = code_area.scrollTop
-      syntax_overlay.scrollLeft = code_area.scrollLeft
-    }
-    
-    // Sync horizontal scrolling
-    syntax_overlay.onscroll = () => {
-      code_area.scrollLeft = syntax_overlay.scrollLeft
-    }
-    
-    // Initial setup
     update_line_numbers()
     apply_syntax_highlighting()
-    
-    // Focus the editor
-    setTimeout(() => code_area.focus(), 100)
   }
 
   function hide_editor() {
@@ -1873,7 +1847,6 @@ async function tabbed_editor(opts, protocol) {
     
     let highlighted_content = escape_html(content)
     
-    // Apply syntax highlighting rules
     for (const [keyword, color] of Object.entries(syntax_rules)) {
       const regex = new RegExp(`\\b${keyword}\\b`, 'g')
       highlighted_content = highlighted_content.replace(
@@ -1882,7 +1855,6 @@ async function tabbed_editor(opts, protocol) {
       )
     }
     
-    // Convert newlines to line breaks for display
     highlighted_content = highlighted_content.replace(/\n/g, '<br>')
     
     syntax_overlay.innerHTML = highlighted_content
@@ -1894,7 +1866,6 @@ async function tabbed_editor(opts, protocol) {
     const { code_area, tab_data } = current_editor
     files[tab_data.id] = code_area.value
     
-    // Notify upstream about file changes
     if (_) {
       _.up({ 
         type: 'file_changed', 
@@ -1948,6 +1919,26 @@ async function tabbed_editor(opts, protocol) {
     if (data && data.id !== active_tab) {
       switch_to_tab(data)
     }
+  }
+
+  function handle_code_input() {
+    update_line_numbers()
+    apply_syntax_highlighting()
+    save_file_content()
+  }
+
+  function handle_code_scroll() {
+    if (!current_editor) return
+    const { code_area, line_numbers, syntax_overlay } = current_editor
+    line_numbers.scrollTop = code_area.scrollTop
+    syntax_overlay.scrollTop = code_area.scrollTop
+    syntax_overlay.scrollLeft = code_area.scrollLeft
+  }
+
+  function handle_overlay_scroll() {
+    if (!current_editor) return
+    const { code_area, syntax_overlay } = current_editor
+    code_area.scrollLeft = syntax_overlay.scrollLeft
   }
 }
 
@@ -2995,7 +2986,7 @@ function fallback_module () {
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/index.js")
 },{"STATE":1,"space":7,"taskbar":12}],14:[function(require,module,exports){
-const hash = 'd74c9516d8ee4228532cef1c93754fe0be0573c5'
+const hash = 'bc2766416051e07aa6d29da131181ff69668aea8'
 const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/' + hash + '/'
 const init_url = prefix + 'doc/state/example/init.js'
 const args = arguments
@@ -3026,6 +3017,7 @@ const space = require('../src/node_modules/space')
 const tabs = require('../src/node_modules/tabs')
 const console_history = require('../src/node_modules/console_history')
 const actions = require('../src/node_modules/actions')
+const tabbed_editor = require('../src/node_modules/tabbed_editor')
 const task_manager = require('../src/node_modules/task_manager')
 const quick_actions = require('../src/node_modules/quick_actions')
 
@@ -3038,6 +3030,7 @@ const imports = {
   tabs,
   console_history,
   actions,
+  tabbed_editor,
   task_manager,
   quick_actions
 }
@@ -3251,6 +3244,7 @@ function fallback_module () {
     '../src/node_modules/tabs',
     '../src/node_modules/console_history',
     '../src/node_modules/actions',
+    '../src/node_modules/tabbed_editor',
     '../src/node_modules/task_manager',
     '../src/node_modules/quick_actions'
   ]
@@ -3300,6 +3294,16 @@ function fallback_module () {
       'icons': 'icons',
       'hardcons': 'hardcons',
       'style': 'style'
+    }
+  }
+  subs['../src/node_modules/tabbed_editor'] = {
+    $: '',
+    0: '',
+    mapping: {
+      'style': 'style',
+      'files': 'files',
+      'highlight': 'highlight',
+      'active_tab': 'active_tab'
     }
   }
   subs['../src/node_modules/task_manager'] = {
@@ -3386,4 +3390,4 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/actions":3,"../src/node_modules/console_history":4,"../src/node_modules/menu":5,"../src/node_modules/quick_actions":6,"../src/node_modules/space":7,"../src/node_modules/tabs":9,"../src/node_modules/tabsbar":10,"../src/node_modules/task_manager":11,"../src/node_modules/taskbar":12,"../src/node_modules/theme_widget":13}]},{},[14]);
+},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/actions":3,"../src/node_modules/console_history":4,"../src/node_modules/menu":5,"../src/node_modules/quick_actions":6,"../src/node_modules/space":7,"../src/node_modules/tabbed_editor":8,"../src/node_modules/tabs":9,"../src/node_modules/tabsbar":10,"../src/node_modules/task_manager":11,"../src/node_modules/taskbar":12,"../src/node_modules/theme_widget":13}]},{},[14]);

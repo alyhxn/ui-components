@@ -14,6 +14,7 @@ const space = require('../src/node_modules/space')
 const tabs = require('../src/node_modules/tabs')
 const console_history = require('../src/node_modules/console_history')
 const actions = require('../src/node_modules/actions')
+const tabbed_editor = require('../src/node_modules/tabbed_editor')
 const task_manager = require('../src/node_modules/task_manager')
 const quick_actions = require('../src/node_modules/quick_actions')
 
@@ -26,6 +27,7 @@ const imports = {
   tabs,
   console_history,
   actions,
+  tabbed_editor,
   task_manager,
   quick_actions
 }
@@ -239,6 +241,7 @@ function fallback_module () {
     '../src/node_modules/tabs',
     '../src/node_modules/console_history',
     '../src/node_modules/actions',
+    '../src/node_modules/tabbed_editor',
     '../src/node_modules/task_manager',
     '../src/node_modules/quick_actions'
   ]
@@ -288,6 +291,16 @@ function fallback_module () {
       'icons': 'icons',
       'hardcons': 'hardcons',
       'style': 'style'
+    }
+  }
+  subs['../src/node_modules/tabbed_editor'] = {
+    $: '',
+    0: '',
+    mapping: {
+      'style': 'style',
+      'files': 'files',
+      'highlight': 'highlight',
+      'active_tab': 'active_tab'
     }
   }
   subs['../src/node_modules/task_manager'] = {
