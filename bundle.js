@@ -32,41 +32,20 @@ async function action_bar(opts, protocol) {
   const quick_placeholder = shadow.querySelector('quick-actions')
   let console_icon = {}
   const subs = await sdb.watch(onbatch)
+
   let send = null
   let _ = null
   if(protocol){
     send = protocol(msg => onmessage(msg))
     _ = { up: send, send_quick_actions: null }
   }
+
   history_icon.innerHTML = console_icon
-  history_icon.onclick = () => {
-    console.log('calling:', 'Command History')
-    _.up({ type: 'console_history_toggle', data: {} })
-  }
+  history_icon.onclick = onhistory
   const element = protocol ? await quick_actions(subs[0], quick_actions_protocol) : await quick_actions(subs[0])
   element.classList.add('replaced-quick-actions')
   quick_placeholder.replaceWith(element)
   return el
-
-  // ---------
-  // PROTOCOLS  
-  // ---------
-  function quick_actions_protocol (send) {
-    _.send_quick_actions = send
-    return on
-    function on ({ type, data }) { 
-
-      _.up({ type, data })
-    }
-  }
-  
-  function onmessage ({ type, data }) {
-
-    if (type === 'console_history_toggle') {
-      return
-    }
-    _.send_quick_actions({ type, data })
-  }
 
   function onbatch (batch) {
     for (const { type, data } of batch) (on[type] || fail)(data, type)
@@ -81,6 +60,23 @@ async function action_bar(opts, protocol) {
 
   function iconject(data) {
     console_icon = data[0]
+  }
+  function onhistory() {
+    _.up({ type: 'console_history_toggle', data: null })
+  }
+  // ---------
+  // PROTOCOLS  
+  // ---------
+  function quick_actions_protocol (send) {
+    _.send_quick_actions = send
+    return on
+    function on ({ type, data }) {
+      _.up({ type, data })
+    }
+  }
+  
+  function onmessage ({ type, data }) {
+    _.send_quick_actions({ type, data })
   }
 }
 
@@ -210,42 +206,24 @@ async function actions(opts, protocol) {
     send = protocol(msg => onmessage(msg))
     _ = { up: send }
   }
-    const api = { toggle, show, hide, filter, set_selected_action }
 
   return el
 
   function onmessage ({ type, data }) {
-    console.log(`[space->actions]`, type, data)
-    const fn = api[type]
-    if (fn) return fn({ type, data })
-    throw new Error('invalid msg', { cause: { type, data } })
+    switch (type) {
+      case 'filter_actions':
+        filter(data)
+        break
+      case 'send_selected_action':
+        send_selected_action(data)
+        break
+      default:
+        fail(data, type)
+    }
   }
   
-  // ---
-  // API
-  // ---
-  function toggle (msg) {
-    is_visible = !is_visible
-    el.style.display = is_visible ? 'block' : 'none'
-  }
-  
-  function show (msg) {
-    is_visible = true
-    el.style.display = 'block'
-  }
-  
-  function hide (msg) {
-    is_visible = false
-    el.style.display = 'none'
-  }
-  
-  function filter (msg) {
-    filter_actions_by_search(msg.data)
-  }
-  
-  function set_selected_action (msg) {
-    // This will be sent back to quick_actions via the routing system
-    _.up({ type: 'quick_actions_callback:set_selected_action', data: msg.data })
+  function send_selected_action (msg) {
+    _.up({ type: 'selected_action', data: msg.data })
   }
 
   function onbatch(batch) {
@@ -294,26 +272,22 @@ async function actions(opts, protocol) {
     const icon = icons[index]
     
     action_item.innerHTML = `
-      <div class="action-icon">${icon}</div>
-      <div class="action-name">${action_data.action}</div>
-      <div class="action-pin">${action_data.pin ? hardcons.pin : hardcons.unpin}</div>
-      <div class="action-default">${action_data.default ? hardcons.default : hardcons.undefault}</div>
-      
-    `
-    
-    action_item.onclick = () => {
-      _.up({ type: 'action_selected', data: action_data })
-      set_selected_action({ data: action_data })
-      hide()
-    }
-    
+    <div class="action-icon">${icon}</div>
+    <div class="action-name">${action_data.action}</div>
+    <div class="action-pin">${action_data.pin ? hardcons.pin : hardcons.unpin}</div>
+    <div class="action-default">${action_data.default ? hardcons.default : hardcons.undefault}</div>`
+    action_item.onclick = onaction
     actions_menu.appendChild(action_item)
+
+    function onaction() {
+      send_selected_action({ data: action_data })
+    }
   }
 
-  function filter_actions_by_search(search_term) {
+  function filter(search_term) {
     const items = shadow.querySelectorAll('.action-item')
     items.forEach(item => {
-      const action_name = item.dataset.action.toLowerCase()
+      const action_name = item.children[1].innerText.toLowerCase()
       const matches = action_name.includes(search_term.toLowerCase())
       item.style.display = matches ? 'flex' : 'none'
     })
@@ -522,7 +496,6 @@ async function console_history (opts, protocol) {
   let init = false
   let commands = []
   let dricons = []
-  let is_visible = false
 
   const subs = await sdb.watch(onbatch)
   let send = null
@@ -531,26 +504,10 @@ async function console_history (opts, protocol) {
     send = protocol(msg => onmessage(msg))
     _ = { up: send }
   }
-  const api = { toggle }
   return el
 
   function onmessage ({ type, data }) {
     console.log(`[space->console_history]`, type, data)
-    const fn = api[type]
-    if (fn) return fn({ type, data })
-    throw new Error('invalid msg', { cause: { type, data } })
-  }
-  
-  // ---
-  // API
-  // ---
-  function toggle (msg) {
-    toggle_visibility()
-  }
-
-  function toggle_visibility () {
-    is_visible = !is_visible
-    el.style.display = is_visible ? 'block' : 'none'
   }
 
   function create_command_item (command_data) {
@@ -585,7 +542,6 @@ async function console_history (opts, protocol) {
       </div>`
 
     command_el.onclick = function () {
-      console.log('Command clicked:', command_data.command)
       _.up({ type: 'command_clicked', data: command_data })
     }
 
@@ -1148,17 +1104,8 @@ async function quick_actions(opts, protocol) {
   }
   text_bar.onclick = activate_input_field
   close_btn.onclick = deactivate_input_field
-  
-  submit_btn.onclick = () => {
-    if (selected_action) {
-      console.log('Selected action submitted:', selected_action)
-      _.up({ type: 'action_submitted', data: selected_action })
-    }
-  }
-  
-  input_field.oninput = (e) => {
-    _.up({ type: 'filter_actions', data: e.target.value })
-  }
+  submit_btn.onclick = onsubmit
+  input_field.oninput = oninput
 
   const subs = await sdb.watch(onbatch)
   submit_btn.innerHTML = hardcons.submit
@@ -1166,18 +1113,10 @@ async function quick_actions(opts, protocol) {
   return el
 
   function onmessage ({ type, data }) {
-    console.log(`[action_bar->quick_actions]`, type, data)
-    
-    if (type === 'set_selected_action') {
-      selected_action = data
-      update_input_display()
-    } else if (type === 'show_actions') {
-      activate_input_field()
-    } else if (type === 'hide_actions') {
-      deactivate_input_field()
+    if (type === 'selected_action') {
+      select_action(data)
     }
   }
-
   function activate_input_field() {
     is_input_active = true
     
@@ -1187,10 +1126,18 @@ async function quick_actions(opts, protocol) {
     input_wrapper.style.display = 'flex'
     input_field.focus()
     
-    _.up({ type: 'show_actions', data: {} })
-    _.up({ type: 'text_bar_clicked', data: {} })
+    _.up({ type: 'display_actions', data: 'block' })
   }
 
+  function onsubmit() {
+    if (selected_action) {
+      console.log('Selected action submitted:', selected_action)
+      _.up({ type: 'action_submitted', data: selected_action })
+    }
+  }
+  function oninput(e) {
+    _.up({ type: 'filter_actions', data: e.target.value })
+  }
   function deactivate_input_field() {
     is_input_active = false
     
@@ -1203,10 +1150,14 @@ async function quick_actions(opts, protocol) {
     selected_action = null
     update_input_display()
     
-    _.up({ type: 'hide_actions', data: {} })
+    _.up({ type: 'display_actions', data: 'none' })
+  }
+  function select_action(action) {
+    selected_action = action
+    update_input_display(selected_action)
   }
 
-  function update_input_display() {
+  function update_input_display(selected_action = null) {
     if (selected_action) {
       slash_prefix.style.display = 'inline'
       command_text.style.display = 'inline'
@@ -1478,6 +1429,7 @@ const { sdb, get } = statedb(fallback_module)
 
 const console_history = require('console_history')
 const actions = require('actions')
+const tabbed_editor = require('tabbed_editor')
 
 module.exports = component
 
@@ -1492,98 +1444,72 @@ async function component (opts, protocol) {
   shadow.innerHTML = `
   <div class="space">
     <actions-placeholder></actions-placeholder>
+    <tabbed-editor-placeholder></tabbed-editor-placeholder>
     <console-history-placeholder></console-history-placeholder>
   </div>`
 
   const actions_placeholder = shadow.querySelector('actions-placeholder')
+  const tabbed_editor_placeholder = shadow.querySelector('tabbed-editor-placeholder')
   const console_placeholder = shadow.querySelector('console-history-placeholder')
   let console_history_el = null
   let actions_el = null
+  let tabbed_editor_el = null
 
   const subs = await sdb.watch(onbatch)
   let send = null
   let _ = null
   if(protocol) {
     send = protocol(msg => onmessage(msg))
-    _ = { up: send, actions: null, console_history: null }
+    _ = { up: send, actions: null, send_console_history: null, send_tabbed_editor: null }
   }
-  const api = { toggle_console_history, show_actions, hide_actions, toggle_actions, filter_actions }
   
   actions_el = protocol ? await actions(subs[1], actions_protocol) : await actions(subs[1])
   actions_el.classList.add('actions')
   actions_placeholder.replaceWith(actions_el)
   
+  tabbed_editor_el = protocol ? await tabbed_editor(subs[2], tabbed_editor_protocol) : await tabbed_editor(subs[2])
+  tabbed_editor_el.classList.add('tabbed-editor')
+  tabbed_editor_placeholder.replaceWith(tabbed_editor_el)
+  
   console_history_el = protocol ? await console_history(subs[0], console_history_protocol) : await console_history(subs[0])
   console_history_el.classList.add('console-history')
   console_placeholder.replaceWith(console_history_el)
-  return el
+  let console_view = false
+  let actions_view = false
+  let tabbed_editor_view = true
 
-  // ---------
-  // PROTOCOLS
-  // ---------
-  function console_history_protocol (send) {
-    _.send_console_history = send
-    return on
-    function on ({ type, data }) { 
-      console.log('[console_history->space]', type, data)
-      if (type === 'toggle') {
-        _.up({ type: 'toggle_console_history', data })
-      }
-    }
+  if (protocol) {
+    console_history_el.style.setProperty('display', 'none')
+    actions_el.style.setProperty('display', 'none')
+    tabbed_editor_el.style.setProperty('display', 'block')
   }
+
+  return el
   
-  function actions_protocol (send) {
-    _.send_actions = send
-    return on
-    function on ({ type, data }) { 
-      console.log('[actions->space]', type, data)
-      if (type === 'action_selected') {
-        _.up({ type: 'actions:action_selected', data })
-      }
-      if (type.startsWith('quick_actions_callback:')) {
-        _.up({ type, data })
-      }
+  function console_history_toggle_view () { 
+    if(console_view) console_history_el.style.setProperty('display', 'none')
+    else console_history_el.style.setProperty('display', 'block')
+    console_view = !console_view
+  }
+  function actions_toggle_view (data) {
+    if(actions_view) actions_el.style.setProperty('display', data)
+    else actions_el.style.setProperty('display', data)
+    actions_view = !actions_view
+  }
+
+  function tabbed_editor_toggle_view (show = true) {
+    if (show) {
+      tabbed_editor_el.style.setProperty('display', 'block')
+      actions_el.style.setProperty('display', 'none')
+      console_history_el.style.setProperty('display', 'none')
+      tabbed_editor_view = true
+      actions_view = false
+      console_view = false
+    } else {
+      tabbed_editor_el.style.setProperty('display', 'none')
+      tabbed_editor_view = false
     }
-  }
-  
-  function onmessage ({ type, data }) {
-    console.log(`[theme_widget->space]`, type, data)
-    const fn = api[type]
-    if (fn) return fn({ type, data })
-    
-    // Route actions messages to actions component
-    if (type.startsWith('actions:')) {
-      const action_type = type.replace('actions:', '')
-      _.send_actions({ type: action_type, data })
-    }
-    
-    // Route quick_actions messages to actions component (for set_selected_action)
-    if (type.startsWith('quick_actions:')) {
-      const action_type = type.replace('quick_actions:', '')
-      _.send_actions({ type: action_type, data })
-    }
-    
-    throw new Error('invalid msg', { cause: { type, data } })
-  }
-  
-  // ---
-  // API
-  // ---
-  function toggle_console_history (msg) { 
-    if (_.console_history) _.send_console_history({ type: 'toggle', data: msg.data }) 
-  }
-  function show_actions (msg) { 
-    if (_.actions) _.send_actions({ type: 'show', data: msg.data }) 
-  }
-  function hide_actions (msg) { 
-    if (_.actions) _.send_actions({ type: 'hide', data: msg.data }) 
-  }
-  function toggle_actions (msg) { 
-    if (_.actions) _.send_actions({ type: 'toggle', data: msg.data }) 
-  }
-  function filter_actions (msg) { 
-    if (_.actions) _.send_actions({ type: 'filter', data: msg.data }) 
-  }
+  } 
 
   function onbatch (batch) {
     for (const { type, data } of batch) {
@@ -1596,6 +1522,57 @@ async function component (opts, protocol) {
     sheet.replaceSync(data)
     shadow.adoptedStyleSheets = [sheet]
   }
+  
+  // ---------
+  // PROTOCOLS
+  // ---------
+
+  function console_history_protocol (send) {
+    _.send_console_history = send
+    return on
+    function on ({ type, data }) { 
+      _.up(type, data)
+    }
+  }
+  
+  function actions_protocol (send) {
+    _.send_actions = send
+    return on
+    function on ({ type, data }) { 
+      _.up({ type, data })
+    }
+  }
+  
+  function tabbed_editor_protocol (send) {
+    _.send_tabbed_editor = send
+    return on
+    function on ({ type, data }) { 
+      _.up({ type, data })
+    }
+  }
+  
+  function onmessage ({ type, data }) {
+    if(type == 'console_history_toggle') console_history_toggle_view()
+    else if (type == 'display_actions') actions_toggle_view(data)
+    else if (type == 'filter_actions') _.send_actions({ type, data })
+    else if (type == 'tab_name_clicked') {
+      tabbed_editor_toggle_view(true)
+      if (_.send_tabbed_editor) {
+        _.send_tabbed_editor({ type: 'toggle_tab', data })
+      }
+    }
+    else if (type == 'tab_close_clicked') {
+      if (_.send_tabbed_editor) {
+        _.send_tabbed_editor({ type: 'close_tab', data })
+      }
+    }
+    else if (type == 'switch_tab') {
+      tabbed_editor_toggle_view(true)
+      if (_.send_tabbed_editor) {
+        _.send_tabbed_editor({ type, data })
+      }
+    }
+  }
 }
 
 function fallback_module () {
@@ -1606,6 +1583,9 @@ function fallback_module () {
         $: ''
       },
       'actions': {
+        $: ''
+      },
+      'tabbed_editor': {
         $: ''
       }
     }
@@ -1631,6 +1611,15 @@ function fallback_module () {
             'icons': 'icons',
             'hardcons': 'hardcons'
           }
+        },
+        'tabbed_editor': {
+          0: '',
+          mapping: {
+            'style': 'style',
+            'files': 'files',
+            'highlight': 'highlight',
+            'active_tab': 'active_tab'
+          }
         }
       },
       drive: {
@@ -1638,21 +1627,43 @@ function fallback_module () {
           'theme.css': {
             raw: `
               .space {
-                display: flex;
-                min-height: 100px;
-                width: 100%;
-                height: inherit;
-                flex-direction: column-reverse;
-                background-color:#2e3440;
+                display: grid;
+                grid-template-rows: 1fr auto auto;
+                min-height: 100vh;
+                width: 100;
+                height: 100;
+                background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
                 position: relative;
+                gap: 8px;
+                padding: 8px;
               }
               .console-history {
+                grid-row: 3;
                 position: relative;
                 width: 100%;
+                background-color: #161b22;
+                border: 1px solid #21262d;
+                border-radius: 6px;
+                min-height: 120px;
               }
               .actions {
+                grid-row: 2;
                 position: relative;
                 width: 100%;
+                background-color: #161b22;
+                border: 1px solid #21262d;
+                border-radius: 6px;
+                min-height: 60px;
+              }
+              .tabbed-editor {
+                grid-row: 1;
+                position: relative;
+                width: 100%;
+                min-height: 400px;
+                background-color: #0d1117;
+                border: 1px solid #21262d;
+                border-radius: 6px;
+                overflow: hidden;
               }
             `
           }
@@ -1663,14 +1674,603 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/space.js")
-},{"STATE":1,"actions":3,"console_history":4}],8:[function(require,module,exports){
+},{"STATE":1,"actions":3,"console_history":4,"tabbed_editor":8}],8:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { sdb, get } = statedb(fallback_module)
+
+module.exports = tabbed_editor
+
+async function tabbed_editor(opts, protocol) {
+  const { sdb } = await get(opts.sid)
+  const on = {
+    style: inject_style,
+    files: onfiles,
+    highlight: onhighlight,
+    active_tab: onactivetab
+  }
+
+  const el = document.createElement('div')
+  const shadow = el.attachShadow({ mode: 'closed' })
+  shadow.innerHTML = `
+  <div class="tabbed-editor">
+    <div class="editor-content">
+      <div class="editor-placeholder">
+        <div class="placeholder-text">Select a file to edit</div>
+      </div>
+    </div>
+  </div>`
+
+  const editor_content = shadow.querySelector('.editor-content')
+  const placeholder = shadow.querySelector('.editor-placeholder')
+
+  let init = false
+  let files = {}
+  let highlight_rules = {}
+  let active_tab = null
+  let current_editor = null
+
+  let send = null
+  let _ = null
+  if (protocol) {
+    send = protocol(msg => onmessage(msg))
+    _ = { up: send }
+  }
+
+  const subs = await sdb.watch(onbatch)
+
+  return el
+
+  function onmessage({ type, data }) {
+    switch (type) {
+      case 'switch_tab':
+        switch_to_tab(data)
+        break
+      case 'close_tab':
+        close_tab(data)
+        break
+      case 'toggle_tab':
+        toggle_tab(data)
+        break
+      default:
+        // Handle other message types
+    }
+  }
+
+  function switch_to_tab(tab_data) {
+    if (active_tab === tab_data.id) {
+      // Tab already active, do nothing or toggle view
+      return
+    }
+    
+    active_tab = tab_data.id
+    create_editor(tab_data)
+    
+    // Notify upstream about tab switch
+    if (_) {
+      _.up({ type: 'tab_switched', data: tab_data })
+    }
+  }
+
+  function toggle_tab(tab_data) {
+    if (active_tab === tab_data.id) {
+      // Hide current tab
+      hide_editor()
+      active_tab = null
+    } else {
+      // Switch to this tab
+      switch_to_tab(tab_data)
+    }
+  }
+
+  function close_tab(tab_data) {
+    if (active_tab === tab_data.id) {
+      hide_editor()
+      active_tab = null
+    }
+    
+    // Notify upstream about tab closure
+    if (_) {
+      _.up({ type: 'tab_closed', data: tab_data })
+    }
+  }
+
+  function create_editor(tab_data) {
+    // Handle different data formats
+    let parsed_data = JSON.parse(tab_data[0])
+    const file_content = files[parsed_data.id] || ''
+    console.log('Creating editor for:', parsed_data)
+    const file_extension = get_file_extension(parsed_data.name || parsed_data.id)
+    const syntax_rules = highlight_rules[file_extension] || {}
+
+    // Clear current editor
+    editor_content.innerHTML = ''
+
+    const editor = document.createElement('div')
+    editor.className = 'code-editor'
+    
+    const editor_wrapper = document.createElement('div')
+    editor_wrapper.className = 'editor-wrapper'
+    
+    const line_numbers = document.createElement('div')
+    line_numbers.className = 'line-numbers'
+    
+    const code_area = document.createElement('textarea')
+    code_area.className = 'code-area'
+    code_area.value = file_content
+    code_area.spellcheck = false
+    code_area.placeholder = `Start editing ${parsed_data.name || parsed_data.id}...`
+    
+    const syntax_overlay = document.createElement('div')
+    syntax_overlay.className = 'syntax-overlay'
+    
+    editor_wrapper.appendChild(line_numbers)
+    editor_wrapper.appendChild(code_area)
+    editor_wrapper.appendChild(syntax_overlay)
+    editor.appendChild(editor_wrapper)
+    
+    editor_content.appendChild(editor)
+    current_editor = { editor, code_area, line_numbers, syntax_overlay, tab_data: parsed_data }
+    
+    // Set up event listeners
+    code_area.oninput = () => {
+      update_line_numbers()
+      apply_syntax_highlighting()
+      save_file_content()
+    }
+    
+    code_area.onscroll = () => {
+      line_numbers.scrollTop = code_area.scrollTop
+      syntax_overlay.scrollTop = code_area.scrollTop
+      syntax_overlay.scrollLeft = code_area.scrollLeft
+    }
+    
+    // Sync horizontal scrolling
+    syntax_overlay.onscroll = () => {
+      code_area.scrollLeft = syntax_overlay.scrollLeft
+    }
+    
+    // Initial setup
+    update_line_numbers()
+    apply_syntax_highlighting()
+    
+    // Focus the editor
+    setTimeout(() => code_area.focus(), 100)
+  }
+
+  function hide_editor() {
+    editor_content.innerHTML = `
+      <div class="editor-placeholder">
+        <div class="placeholder-text">Select a file to edit</div>
+      </div>`
+    current_editor = null
+  }
+
+  function update_line_numbers() {
+    if (!current_editor) return
+    
+    const { code_area, line_numbers } = current_editor
+    const lines = code_area.value.split('\n')
+    const line_count = lines.length
+    
+    let line_html = ''
+    for (let i = 1; i <= line_count; i++) {
+      line_html += `<div class="line-number">${i}</div>`
+    }
+    
+    line_numbers.innerHTML = line_html
+  }
+
+  function apply_syntax_highlighting() {
+    if (!current_editor) return
+    
+    const { code_area, syntax_overlay, tab_data } = current_editor
+    console.log('Applying syntax highlighting for:', tab_data)
+    const file_extension = get_file_extension(tab_data.name)
+    const syntax_rules = highlight_rules[file_extension] || {}
+    const content = code_area.value
+    
+    let highlighted_content = escape_html(content)
+    
+    // Apply syntax highlighting rules
+    for (const [keyword, color] of Object.entries(syntax_rules)) {
+      const regex = new RegExp(`\\b${keyword}\\b`, 'g')
+      highlighted_content = highlighted_content.replace(
+        regex, 
+        `<span style="color: ${color}">${keyword}</span>`
+      )
+    }
+    
+    // Convert newlines to line breaks for display
+    highlighted_content = highlighted_content.replace(/\n/g, '<br>')
+    
+    syntax_overlay.innerHTML = highlighted_content
+  }
+
+  function save_file_content() {
+    if (!current_editor) return
+    
+    const { code_area, tab_data } = current_editor
+    files[tab_data.id] = code_area.value
+    
+    // Notify upstream about file changes
+    if (_) {
+      _.up({ 
+        type: 'file_changed', 
+        data: { 
+          id: tab_data.id, 
+          content: code_area.value 
+        } 
+      })
+    }
+  }
+
+  function get_file_extension(filename) {
+    const parts = filename.split('.')
+    return parts.length > 1 ? parts[parts.length - 1] : ''
+  }
+
+  function escape_html(text) {
+    const div = document.createElement('div')
+    div.textContent = text
+    return div.innerHTML
+  }
+
+  function onbatch(batch) {
+    for (const { type, data } of batch) (on[type] || fail)(data, type)
+    if (!init) {
+      init = true
+    }
+  }
+
+  function fail(data, type) { 
+    console.warn('Invalid message', { data, type })
+  }
+
+  function inject_style(data) {
+    const sheet = new CSSStyleSheet()
+    sheet.replaceSync(data)
+    shadow.adoptedStyleSheets = [sheet]
+  }
+
+  function onfiles(data) {
+    files = data[0]
+  }
+
+  function onhighlight(data) {
+    const file_type = data.type || 'default'
+    const rules = typeof data.rules === 'string' ? JSON.parse(data.rules) : data.rules
+    highlight_rules[file_type] = rules
+  }
+
+  function onactivetab(data) {
+    if (data && data.id !== active_tab) {
+      switch_to_tab(data)
+    }
+  }
+}
+
+function fallback_module() {
+  return {
+    api: fallback_instance
+  }
+
+  function fallback_instance() {
+    return {
+      drive: {
+        'files/': {
+          'example.js': {
+            raw: `
+              function hello() {
+                console.log("Hello, World!");
+              }
+
+              const x = 42;
+              let y = "string";
+
+              if (x > 0) {
+                hello();
+              }
+            `
+          },
+          'example.md': {
+            raw: `
+              # Example Markdown
+              This is an **example** markdown file.
+
+              ## Features
+
+              - Syntax highlighting
+              - Line numbers
+              - File editing
+
+              \`\`\`javascript
+              function example() {
+                return true;
+              }
+              \`\`\`
+            `
+          },
+          'data.json': {
+            raw: `
+              {
+                "name": "example",
+                "version": "1.0.0",
+                "dependencies": {
+                "lodash": "^4.17.21"
+              }
+            `
+          }
+        },
+        'highlight/': {
+          'js': {
+            raw: JSON.stringify({
+              'function': '#ff7b72',
+              'const': '#ff7b72', 
+              'let': '#ff7b72',
+              'var': '#ff7b72',
+              'if': '#ff7b72',
+              'else': '#ff7b72',
+              'for': '#ff7b72',
+              'while': '#ff7b72',
+              'return': '#ff7b72',
+              'true': '#79c0ff',
+              'false': '#79c0ff',
+              'null': '#79c0ff',
+              'undefined': '#79c0ff',
+              'console': '#d2a8ff',
+              'log': '#d2a8ff',
+              'document': '#ffa657',
+              'window': '#ffa657',
+              'Math': '#ffa657',
+              'Array': '#ffa657',
+              'Object': '#ffa657',
+              'String': '#ffa657',
+              'Number': '#ffa657'
+            })
+          },
+          'css': {
+            raw: JSON.stringify({
+              'display': '#ff7b72',
+              'position': '#ff7b72', 
+              'background': '#ff7b72',
+              'color': '#ff7b72',
+              'margin': '#ff7b72',
+              'padding': '#ff7b72',
+              'border': '#ff7b72',
+              'width': '#ff7b72',
+              'height': '#ff7b72',
+              'flex': '#ff7b72',
+              'grid': '#ff7b72',
+              'auto': '#79c0ff',
+              'center': '#79c0ff',
+              'relative': '#79c0ff',
+              'absolute': '#79c0ff',
+              'fixed': '#79c0ff'
+            })
+          },
+          'md': {
+            raw: JSON.stringify({
+              '#': '#7ee787',
+              '##': '#7ee787',
+              '###': '#7ee787',
+              '####': '#7ee787',
+              '**': '#a5d6ff',
+              '*': '#a5d6ff',
+              '`': '#f85149',
+              '-': '#ffa657',
+              '1.': '#ffa657',
+              '2.': '#ffa657',
+              '3.': '#ffa657'
+            })
+          },
+          'json': {
+            raw: JSON.stringify({
+              'true': '#79c0ff',
+              'false': '#79c0ff',
+              'null': '#79c0ff'
+            })
+          }
+        },
+        'style/': {
+          'theme.css': {
+            raw: `
+              .tabbed-editor {
+                width: 100%;
+                height: 100%;
+                background-color: #0d1117;
+                color: #e6edf3;
+                font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', 'Menlo', monospace;
+                display: grid;
+                grid-template-rows: 1fr;
+                position: relative;
+                border: 1px solid #30363d;
+                border-radius: 6px;
+                overflow: hidden;
+              }
+
+              .editor-content {
+                display: grid;
+                grid-template-rows: 1fr;
+                position: relative;
+                overflow: hidden;
+                background-color: #0d1117;
+              }
+
+              .editor-placeholder {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                height: 100%;
+                color: #7d8590;
+                font-style: italic;
+                font-size: 16px;
+                background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
+              }
+
+              .code-editor {
+                height: 100%;
+                display: grid;
+                grid-template-rows: 1fr;
+                background-color: #0d1117;
+              }
+
+              .editor-wrapper {
+                display: grid;
+                grid-template-columns: auto 1fr;
+                position: relative;
+                overflow: auto;
+                background-color: #0d1117;
+              }
+
+              .line-numbers {
+                background-color: #161b22;
+                color: #7d8590;
+                padding: 12px 16px 12px 20px;
+                min-width: 60px;
+                text-align: right;
+                user-select: none;
+                font-size: 13px;
+                line-height: 20px;
+                font-weight: 400;
+                border-right: 1px solid #21262d;
+                position: sticky;
+                left: 0;
+                z-index: 1;
+              }
+
+              .line-number {
+                height: 20px;
+                line-height: 20px;
+                transition: color 0.1s ease;
+              }
+
+              .line-number:hover {
+                color: #f0f6fc;
+              }
+
+              .code-area {
+                background-color: transparent;
+                color: transparent;
+                border: none;
+                outline: none;
+                resize: none;
+                font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', 'Menlo', monospace;
+                font-size: 13px;
+                line-height: 20px;
+                padding: 12px 16px;
+                caret-color: #f0f6fc;
+                position: relative;
+                z-index: 2;
+                tab-size: 2;
+                white-space: pre;
+                overflow-wrap: normal;
+                overflow-x: auto;
+                min-height: 100%;
+              }
+
+              .syntax-overlay {
+                position: absolute;
+                top: 0;
+                left: 77px;
+                right: 0;
+                bottom: 0;
+                pointer-events: none;
+                font-family: 'SFMono-Regular', 'Consolas', 'Liberation Mono', 'Menlo', monospace;
+                font-size: 13px;
+                line-height: 20px;
+                padding: 12px 16px;
+                color: #e6edf3;
+                white-space: pre;
+                overflow: hidden;
+                z-index: 1;
+                background-color: #0d1117;
+              }
+
+              .code-area:focus {
+                background-color: transparent;
+                box-shadow: none;
+              }
+
+              .code-area::selection {
+                background-color: #264f78;
+              }
+
+              .syntax-overlay::selection {
+                background-color: transparent;
+              }
+
+              /* Scrollbar styling */
+              .editor-wrapper::-webkit-scrollbar {
+                width: 8px;
+                height: 8px;
+              }
+
+              .editor-wrapper::-webkit-scrollbar-track {
+                background: #161b22;
+              }
+
+              .editor-wrapper::-webkit-scrollbar-thumb {
+                background: #30363d;
+                border-radius: 4px;
+              }
+
+              .editor-wrapper::-webkit-scrollbar-thumb:hover {
+                background: #484f58;
+              }
+
+              /* Syntax highlighting improvements */
+              .syntax-keyword {
+                color: #ff7b72;
+                font-weight: 500;
+              }
+
+              .syntax-string {
+                color: #a5d6ff;
+              }
+
+              .syntax-number {
+                color: #79c0ff;
+              }
+
+              .syntax-comment {
+                color: #8b949e;
+                font-style: italic;
+              }
+
+              .syntax-function {
+                color: #d2a8ff;
+              }
+
+              .syntax-variable {
+                color: #ffa657;
+              }
+            `
+          }
+        },
+        'active_tab/': {
+          'current.json': {
+            raw: JSON.stringify({
+              id: 'example.js',
+              name: 'example.js'
+            })
+          }
+        }
+      }
+    }
+  }
+}
+
+}).call(this)}).call(this,"/src/node_modules/tabbed_editor/index.js")
+},{"STATE":1}],9:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 module.exports = component
 
-async function component (opts, callback = id => console.log('calling:', '@' + id)) {
+async function component (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
   const on = {
@@ -1688,6 +2288,12 @@ async function component (opts, callback = id => console.log('calling:', '@' + i
   let variables = []
   let dricons = []
   const subs = await sdb.watch(onbatch)
+  let send = null
+  let _ = null
+  if (protocol) {
+    send = protocol(msg => onmessage(msg))
+    _ = { up: send }
+  }
   if (entries) {
     let is_down = false
     let start_x
@@ -1740,6 +2346,13 @@ async function component (opts, callback = id => console.log('calling:', '@' + i
   }
   return div
 
+  function onmessage({ type, data }) {
+    switch (type) {
+      default:
+        // Handle other message types
+    }
+  }
+
   async function create_btn ({ name, id }, index) {
     const el = document.createElement('div')
     el.innerHTML = `
@@ -1750,10 +2363,26 @@ async function component (opts, callback = id => console.log('calling:', '@' + i
 
     el.className = 'tabsbtn'
     const icon_el = el.querySelector('.icon')
-    const label_el = el.querySelector('.name')
+    const name_el = el.querySelector('.name')
+    const close_btn = el.querySelector('.btn')
 
-    label_el.draggable = false
-    icon_el.onclick = callback
+    name_el.draggable = false
+    
+    // Add click handler for tab name (switch/toggle tab)
+    name_el.onclick = () => {
+      if (_) {
+        _.up({ type: 'tab_name_clicked', data: { id, name } })
+      }
+    }
+    
+    // Add click handler for close button
+    close_btn.onclick = (e) => {
+      e.stopPropagation()
+      if (_) {
+        _.up({ type: 'tab_close_clicked', data: { id, name } })
+      }
+    }
+    
     entries.appendChild(el)
     return
   }
@@ -1838,7 +2467,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/index.js")
-},{"STATE":1}],9:[function(require,module,exports){
+},{"STATE":1}],10:[function(require,module,exports){
 (function (__filename){(function (){
 const state = require('STATE')
 const state_db = state(__filename)
@@ -1849,7 +2478,7 @@ const task_manager = require('task_manager')
 
 module.exports = tabsbar
 
-async function tabsbar (opts, callback = id => console.log('calling:', '$' + id), callback_subs = id => console.log('calling_from_tabsbar:', '@' + id)) {
+async function tabsbar (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const on = {
     style: inject_style,
@@ -1860,24 +2489,47 @@ async function tabsbar (opts, callback = id => console.log('calling:', '$' + id)
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
   const subs = await sdb.watch(onbatch)
-  dricons.forEach(num => console.log(num))
-  console.log('dricons:', dricons)
+  
+  let send = null
+  let _ = null
+  if (protocol) {
+    send = protocol(msg => onmessage(msg))
+    _ = { up: send, tabs: null }
+  }
+  
   shadow.innerHTML = `
     <div class="tabs-bar-container">
-      <button class="hat-btn">${dricons[0]}</button>
+      <button class="hat-btn">${dricons[0] || ''}</button>
       <tabs></tabs>
       <task-manager></task-manager>
-      <button class="bar-btn">${dricons[2]}</button>
+      <button class="bar-btn">${dricons[2] || ''}</button>
     </div>
   `
 
-  const tabs = await tabs_component(subs[0], callback_subs)
+  const tabs = protocol ? await tabs_component(subs[0], () => {}, tabs_protocol) : await tabs_component(subs[0])
   tabs.classList.add('tabs-bar')
   shadow.querySelector('tabs').replaceWith(tabs)
 
   const task_mgr = await task_manager(subs[1], () => console.log('Task manager clicked!'))
   task_mgr.classList.add('bar-btn')
   shadow.querySelector('task-manager').replaceWith(task_mgr)
+
+  return el
+
+  function onmessage({ type, data }) {
+    switch (type) {
+      default:
+        // Handle other message types
+    }
+  }
+
+  function tabs_protocol(send) {
+    _.tabs = send
+    return on
+    function on({ type, data }) {
+      _.up({ type, data })
+    }
+  }
 
   return el
 
@@ -1978,7 +2630,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/tabsbar/index.js")
-},{"STATE":1,"tabs":8,"task_manager":10}],10:[function(require,module,exports){
+},{"STATE":1,"tabs":9,"task_manager":11}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -2063,7 +2715,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager.js")
-},{"STATE":1}],11:[function(require,module,exports){
+},{"STATE":1}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -2103,26 +2755,11 @@ async function taskbar(opts, protocol) {
   action_bar_el.classList.add('replaced-action-bar')
   action_bar_slot.replaceWith(action_bar_el)
 
-  const tabsbar_el = protocol ? await tabsbar(subs[1], 'tabsbar_protocol') : await tabsbar(subs[1])
+  const tabsbar_el = protocol ? await tabsbar(subs[1], tabsbar_protocol) : await tabsbar(subs[1])
   tabsbar_el.classList.add('replaced-tabsbar')
   tabsbar_slot.replaceWith(tabsbar_el)
 
   return el
-
-  // ---------
-  // PROTOCOLS  
-  // ---------
-  function action_bar_protocol (send) {
-    _.send_action_bar = send
-    return on
-    function on ({ type, data }) { 
-      _.up({ type, data })
-    }
-  }
-  
-  function onmessage ({ type, data }) {
-    _.send_action_bar({ type, data })
-  }
 
   function onbatch(batch) {
     for (const { type, data } of batch) (on[type] || fail)(data, type)
@@ -2134,6 +2771,38 @@ async function taskbar(opts, protocol) {
     const sheet = new CSSStyleSheet()
     sheet.replaceSync(data)
     shadow.adoptedStyleSheets = [sheet]
+  }
+
+  // ---------
+  // PROTOCOLS  
+  // ---------
+  function action_bar_protocol (send) {
+    _.action_bar = send
+    return on
+    function on ({ type, data }) { 
+      _.up({ type, data })
+    }
+  }
+  
+  function tabsbar_protocol (send) {
+    _.tabsbar = send
+    return on
+    function on ({ type, data }) { 
+      _.up({ type, data })
+    }
+  }
+  
+  function onmessage ({ type, data }) {
+    switch (type) {
+      case 'tab_name_clicked':
+      case 'tab_close_clicked':
+        _.up({ type, data })
+        break
+      default:
+        if (_.action_bar) {
+          _.action_bar({ type, data })
+        }
+    }
   }
 }
 
@@ -2198,7 +2867,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/index.js")
-},{"STATE":1,"action_bar":2,"tabsbar":9}],12:[function(require,module,exports){
+},{"STATE":1,"action_bar":2,"tabsbar":10}],13:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -2232,43 +2901,15 @@ async function theme_widget (opts) {
   let taskbar_el = null
   const _ = { send_space: null, send_taskbar: null }
   
+  taskbar_el = await taskbar(subs[1], taskbar_protocol)
+  taskbar_slot.replaceWith(taskbar_el)
+  
   space_el = await space(subs[0], space_protocol)
   space_el.classList.add('space')
   space_slot.replaceWith(space_el)
-
-  taskbar_el = await taskbar(subs[1], taskbar_protocol)
-  taskbar_slot.replaceWith(taskbar_el)
-
+  
   return el
-
-  // ---------
-  // PROTOCOLS
-  // ---------
-  function space_protocol (send) {
-    _.send_space = send
-    return on
-    function on ({ type, data }) {
-      console.log('[space->theme_widget]', type, data)
-      // Route messages to taskbar
-      if (type === 'toggle_console_history' || type.startsWith('actions:') || type === 'action_selected' || type.startsWith('quick_actions_callback:')) {
-        _.send_taskbar({ type, data })
-      }
-    }
-  }
-
-  function taskbar_protocol (send) {
-    _.send_taskbar = send
-    return on
-    function on ({ type, data }) {
-      console.log(`[${type}->theme_widget]`, type, data)
-      // Route messages to space
-      if (type === 'action_selected') {
-        _.send_space({ type, data })
-        console.log('theme_widget->space', data)
-      }
-    }
-  }
-
+  
   function onbatch (batch) {
     for (const { type, data } of batch) {
       on[type] && on[type](data)
@@ -2279,6 +2920,25 @@ async function theme_widget (opts) {
     const sheet = new CSSStyleSheet()
     sheet.replaceSync(data)
     shadow.adoptedStyleSheets = [sheet]
+  }
+
+  // ---------
+  // PROTOCOLS
+  // ---------
+  function space_protocol (send) {
+    _.send_space = send
+    return on
+    function on ({ type, data }) {
+      _.send_taskbar({ type, data })
+    }
+  }
+
+  function taskbar_protocol (send) {
+    _.send_taskbar = send
+    return on
+    function on ({ type, data }) {
+      _.send_space({ type, data })
+    }
   }
 }
 
@@ -2334,8 +2994,8 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/index.js")
-},{"STATE":1,"space":7,"taskbar":11}],13:[function(require,module,exports){
-const hash = 'bc2766416051e07aa6d29da131181ff69668aea8'
+},{"STATE":1,"space":7,"taskbar":12}],14:[function(require,module,exports){
+const hash = 'd74c9516d8ee4228532cef1c93754fe0be0573c5'
 const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/' + hash + '/'
 const init_url = prefix + 'doc/state/example/init.js'
 const args = arguments
@@ -2348,7 +3008,7 @@ fetch(init_url).then(res => res.text()).then(async source => {
   await init(args, prefix)
   require('./page')
 })
-},{"./page":14}],14:[function(require,module,exports){
+},{"./page":15}],15:[function(require,module,exports){
 (function (__filename){(function (){
 localStorage.clear()
 const STATE = require('../src/node_modules/STATE')
@@ -2423,6 +3083,7 @@ async function boot (opts) {
     <div class="components-wrapper"></div>
   </div>`
   el.style.margin = 0
+  el.style.backgroundColor = '#d8dee9'
   // ----------------------------------------
   // ELEMENTS
   // ----------------------------------------
@@ -2495,7 +3156,7 @@ async function create_component (entries_obj) {
           setTimeout(() => {
             target_wrapper.scrollIntoView({ behavior: 'auto', block: 'center' })
             clear_selection_highlight()
-            target_wrapper.style.backgroundColor = 'lightblue'
+            target_wrapper.style.backgroundColor = '#2e3440'
             current_selected_wrapper = target_wrapper
           }, 100)
         }
@@ -2702,7 +3363,7 @@ function fallback_module () {
             resize: both;
             overflow: auto;
             border-radius: 0px;
-            background-color: #ffffff;
+            background-color: #eceff4;
             min-height: 50px;
           }
           .component-content {
@@ -2725,4 +3386,4 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/actions":3,"../src/node_modules/console_history":4,"../src/node_modules/menu":5,"../src/node_modules/quick_actions":6,"../src/node_modules/space":7,"../src/node_modules/tabs":8,"../src/node_modules/tabsbar":9,"../src/node_modules/task_manager":10,"../src/node_modules/taskbar":11,"../src/node_modules/theme_widget":12}]},{},[13]);
+},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/actions":3,"../src/node_modules/console_history":4,"../src/node_modules/menu":5,"../src/node_modules/quick_actions":6,"../src/node_modules/space":7,"../src/node_modules/tabs":9,"../src/node_modules/tabsbar":10,"../src/node_modules/task_manager":11,"../src/node_modules/taskbar":12,"../src/node_modules/theme_widget":13}]},{},[14]);
