@@ -1629,7 +1629,7 @@ function fallback_module () {
               .space {
                 display: grid;
                 grid-template-rows: 1fr auto auto;
-                min-height: 100vh;
+                min-height: 200px;
                 width: 100;
                 height: 100;
                 background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
@@ -1659,7 +1659,7 @@ function fallback_module () {
                 grid-row: 1;
                 position: relative;
                 width: 100%;
-                min-height: 400px;
+                min-height: 250px;
                 background-color: #0d1117;
                 border: 1px solid #21262d;
                 border-radius: 6px;
@@ -2991,7 +2991,7 @@ const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/' + hash + 
 const init_url = prefix + 'doc/state/example/init.js'
 const args = arguments
 
-fetch(init_url).then(res => res.text()).then(async source => {
+fetch(init_url, { cache: 'no-store' }).then(res => res.text()).then(async source => {
   const module = { exports: {} }
   const f = new Function('module', 'require', source)
   f(module, require)
