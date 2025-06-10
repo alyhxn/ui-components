@@ -1,7 +1,8 @@
 localStorage.clear()
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
+const { sdb } = statedb(fallback_module)
+const {drive} = sdb
 /******************************************************************************
   PAGE
 ******************************************************************************/
@@ -217,12 +218,15 @@ async function create_component (entries_obj) {
     update_url(null)
   }
 
-  function onbatch (batch) {
-    for (const { type, data } of batch) {
-      on[type] && on[type](data)
+  async function onbatch(batch) {
+    for (const { type, paths } of batch){
+      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      console.log('onbatch', type, data)
+      const func = on[type] || fail
+      func(data, type)
     }
   }
-
+  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
   function inject(data) {
     const style_data = Array.isArray(data) ? data[0] : (JSON.parse(data))[0]
     const sheet = new CSSStyleSheet()
