@@ -5,8 +5,10 @@
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
+const { drive } = sdb
 
 module.exports = action_bar
+
 const quick_actions = require('quick_actions')
 async function action_bar(opts, protocol) {
   const { id, sdb } = await get(opts.sid)
@@ -47,8 +49,11 @@ async function action_bar(opts, protocol) {
   quick_placeholder.replaceWith(element)
   return el
 
-  function onbatch (batch) {
-    for (const { type, data } of batch) (on[type] || fail)(data, type)
+  async function onbatch (batch) {
+    for (const { type, paths } of batch){
+      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      (on[type] || fail)(data, type)
+    }
   }
   function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
 
@@ -170,6 +175,7 @@ function fallback_module() {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
+const { drive } = sdb
 
 module.exports = actions
 
@@ -226,8 +232,11 @@ async function actions(opts, protocol) {
     _.up({ type: 'selected_action', data: msg.data })
   }
 
-  function onbatch(batch) {
-    for (const { type, data } of batch) (on[type] || fail)(data, type)
+  async function onbatch(batch) {
+    for (const { type, paths } of batch){
+      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      (on[type] || fail)(data, type)
+    }
     if (!init) {
       create_actions_menu()
       init = true
@@ -471,6 +480,7 @@ function fallback_module() {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
+const {drive} = sdb
 
 module.exports = console_history
 
@@ -559,9 +569,11 @@ async function console_history (opts, protocol) {
       commands_placeholder.replaceWith(commands_container)
       init = true
   }
-  function onbatch (batch) {
-    for (const { type, data } of batch) (on[type] || fail)(data, type)
-    
+  async function onbatch(batch) {
+    for (const { type, paths } of batch){
+      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      (on[type] || fail)(data, type)
+    }
     if (!init && commands.length > 0) {
       render_commands()
     }
@@ -801,6 +813,7 @@ function fallback_module () {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
+const {drive} = sdb
 module.exports = create_component_menu
 async function create_component_menu (opts, names, inicheck, callbacks) {
   const { id, sdb } = await get(opts.sid)
@@ -888,11 +901,15 @@ async function create_component_menu (opts, names, inicheck, callbacks) {
     }
   }
 
-  function onbatch (batch) {
-    for (const { type, data } of batch) {
-      on[type] && on[type](data)
+  async function onbatch(batch) {
+    for (const { type, paths } of batch){
+      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      const func = on[type] || fail
+      func(data, type)
     }
   }
+
+  function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
 
   function inject (data) {
     const sheet = new CSSStyleSheet()
@@ -1048,6 +1065,7 @@ function fallback_module () {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
+const {drive} = sdb
 
 module.exports = quick_actions
 
@@ -1173,8 +1191,11 @@ async function quick_actions(opts, protocol) {
     }
   }
 
-  function onbatch (batch) {
-    for (const { type, data } of batch) (on[type] || fail)(data, type)
+  async function onbatch(batch) {
+    for (const { type, paths } of batch){
+      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      (on[type] || fail)(data, type)
+    }
     if(!init) {
       create_default_actions(defaults)
       init = true
@@ -1426,6 +1447,7 @@ function fallback_module() {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
+const {drive} = sdb
 
 const console_history = require('console_history')
 const actions = require('actions')
@@ -1511,12 +1533,13 @@ async function component (opts, protocol) {
     }
   } 
 
-  function onbatch (batch) {
-    for (const { type, data } of batch) {
-      on[type] && on[type](data)
+  async function onbatch(batch) {
+    for (const { type, paths } of batch){
+      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      (on[type] || fail)(data, type)
     }
   }
-
+  function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
   function inject_style (data) {
     const sheet = new CSSStyleSheet()
     sheet.replaceSync(data)
@@ -1679,6 +1702,7 @@ function fallback_module () {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
+const { drive } = sdb
 
 module.exports = tabbed_editor
 
@@ -1888,8 +1912,11 @@ async function tabbed_editor(opts, protocol) {
     return div.innerHTML
   }
 
-  function onbatch(batch) {
-    for (const { type, data } of batch) (on[type] || fail)(data, type)
+  async function onbatch(batch) {
+    for (const { type, paths } of batch){
+      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      (on[type] || fail)(data, type)
+    }
     if (!init) {
       init = true
     }
@@ -2259,6 +2286,8 @@ function fallback_module() {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
+const { drive } = sdb
+
 module.exports = component
 
 async function component (opts, protocol) {
@@ -2378,8 +2407,11 @@ async function component (opts, protocol) {
     return
   }
 
-  function onbatch (batch) {
-    for (const { type, data } of batch) (on[type] || fail)(data, type)
+  async function onbatch(batch) {
+    for (const { type, paths } of batch){
+      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      (on[type] || fail)(data, type)
+    }
     if (!init) {
       variables.forEach(create_btn)
       init = true
@@ -2463,6 +2495,7 @@ function fallback_module () {
 const state = require('STATE')
 const state_db = state(__filename)
 const { sdb, get } = state_db(fallback_module)
+const {drive} = sdb
 
 const tabs_component = require('tabs')
 const task_manager = require('task_manager')
@@ -2524,8 +2557,11 @@ async function tabsbar (opts, protocol) {
 
   return el
 
-  function onbatch (batch) {
-    for (const { type, data } of batch) (on[type] || fail)(data, type)
+  async function onbatch(batch) {
+    for (const { type, paths } of batch){
+      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      (on[type] || fail)(data, type)
+    }
   }
   function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
 
@@ -2626,6 +2662,7 @@ function fallback_module () {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
+const {drive} = sdb
 
 module.exports = task_manager
 
@@ -2649,12 +2686,13 @@ async function task_manager (opts, callback = () => console.log('task manager cl
 
   return el
 
-  function onbatch (batch) {
-    for (const { type, data } of batch) {
-      if (on[type]) on[type](data)
+  async function onbatch(batch) {
+    for (const { type, paths } of batch){
+      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      (on[type] || fail)(data, type)
     }
   }
-
+  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
   function inject (data) {
     const sheet = new window.CSSStyleSheet()
     sheet.replaceSync(data)
@@ -2711,6 +2749,7 @@ function fallback_module () {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
+const {drive} = sdb
 
 const action_bar = require('action_bar')
 const tabsbar = require('tabsbar')
@@ -2752,8 +2791,11 @@ async function taskbar(opts, protocol) {
 
   return el
 
-  function onbatch(batch) {
-    for (const { type, data } of batch) (on[type] || fail)(data, type)
+  async function onbatch(batch) {
+    for (const { type, paths } of batch){
+      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      (on[type] || fail)(data, type)
+    }
   }
 
   function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
@@ -2863,6 +2905,7 @@ function fallback_module() {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
+const {drive} = sdb
 
 const space = require('space')
 const taskbar = require('taskbar')
@@ -2901,12 +2944,13 @@ async function theme_widget (opts) {
   
   return el
   
-  function onbatch (batch) {
-    for (const { type, data } of batch) {
-      on[type] && on[type](data)
+  async function onbatch(batch) {
+    for (const { type, paths } of batch){
+      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      (on[type] || fail)(data, type)
     }
   }
-
+  function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
   function inject_style (data) {
     const sheet = new CSSStyleSheet()
     sheet.replaceSync(data)
@@ -2986,7 +3030,7 @@ function fallback_module () {
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/index.js")
 },{"STATE":1,"space":7,"taskbar":12}],14:[function(require,module,exports){
-const hash = 'bc2766416051e07aa6d29da131181ff69668aea8'
+const hash = '6fc73361a2ea42065a15729b0974a1e5c10fa764'
 const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/' + hash + '/'
 const init_url = prefix + 'doc/state/example/init.js'
 const args = arguments
@@ -3004,7 +3048,8 @@ fetch(init_url, { cache: 'no-store' }).then(res => res.text()).then(async source
 localStorage.clear()
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
+const { sdb } = statedb(fallback_module)
+const {drive} = sdb
 /******************************************************************************
   PAGE
 ******************************************************************************/
@@ -3220,12 +3265,15 @@ async function create_component (entries_obj) {
     update_url(null)
   }
 
-  function onbatch (batch) {
-    for (const { type, data } of batch) {
-      on[type] && on[type](data)
+  async function onbatch(batch) {
+    for (const { type, paths } of batch){
+      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      console.log('onbatch', type, data)
+      const func = on[type] || fail
+      func(data, type)
     }
   }
-
+  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
   function inject(data) {
     const style_data = Array.isArray(data) ? data[0] : (JSON.parse(data))[0]
     const sheet = new CSSStyleSheet()
