@@ -5,13 +5,13 @@
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
-const { drive } = sdb
 
 module.exports = action_bar
 
 const quick_actions = require('quick_actions')
 async function action_bar(opts, protocol) {
   const { id, sdb } = await get(opts.sid)
+  const { drive } = sdb
   const on = {
     style: style_inject,
     icons: iconject
@@ -52,7 +52,8 @@ async function action_bar(opts, protocol) {
   async function onbatch (batch) {
     for (const { type, paths } of batch){
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
-      (on[type] || fail)(data, type)
+      const func = on[type] || fail
+      func(data, type)
     }
   }
   function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
@@ -175,12 +176,12 @@ function fallback_module() {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
-const { drive } = sdb
 
 module.exports = actions
 
 async function actions(opts, protocol) {
   const { id, sdb } = await get(opts.sid)
+  const { drive } = sdb
   
   const on = {
     style: inject_style,
@@ -235,7 +236,8 @@ async function actions(opts, protocol) {
   async function onbatch(batch) {
     for (const { type, paths } of batch){
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
-      (on[type] || fail)(data, type)
+      const func = on[type] || fail
+      func(data, type)
     }
     if (!init) {
       create_actions_menu()
@@ -480,12 +482,12 @@ function fallback_module() {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
-const {drive} = sdb
 
 module.exports = console_history
 
 async function console_history (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
+  const {drive} = sdb
   const on = {
     style: inject_style,
     commands: oncommands,
@@ -572,7 +574,8 @@ async function console_history (opts, protocol) {
   async function onbatch(batch) {
     for (const { type, paths } of batch){
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
-      (on[type] || fail)(data, type)
+      const func = on[type] || fail
+      func(data, type)
     }
     if (!init && commands.length > 0) {
       render_commands()
@@ -813,10 +816,10 @@ function fallback_module () {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
-const {drive} = sdb
 module.exports = create_component_menu
 async function create_component_menu (opts, names, inicheck, callbacks) {
   const { id, sdb } = await get(opts.sid)
+  const {drive} = sdb
   const on = {
     style: inject
   }
@@ -1065,12 +1068,12 @@ function fallback_module () {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
-const {drive} = sdb
 
 module.exports = quick_actions
 
 async function quick_actions(opts, protocol) {
   const { id, sdb } = await get(opts.sid)
+  const {drive} = sdb
   
   const on = {
     style: inject,
@@ -1193,8 +1196,10 @@ async function quick_actions(opts, protocol) {
 
   async function onbatch(batch) {
     for (const { type, paths } of batch){
-      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
-      (on[type] || fail)(data, type)
+      console.log('Type =', type, '\nPath =', paths)
+      const data = await Promise.all(paths.map(path => drive.get(path).then(file => console.log(`await Promise.all(paths.map(path => drive.get(path).then(file => console.log('file ===', file)))) -------->>\n`, file))))
+      const func = on[type] || fail
+      func(data, type)
     }
     if(!init) {
       create_default_actions(defaults)
@@ -1447,7 +1452,6 @@ function fallback_module() {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
-const {drive} = sdb
 
 const console_history = require('console_history')
 const actions = require('actions')
@@ -1457,6 +1461,7 @@ module.exports = component
 
 async function component (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
+  const {drive} = sdb
   const on = {
     style: inject_style
   }
@@ -1536,7 +1541,8 @@ async function component (opts, protocol) {
   async function onbatch(batch) {
     for (const { type, paths } of batch){
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
-      (on[type] || fail)(data, type)
+      const func = on[type] || fail
+      func(data, type)
     }
   }
   function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
@@ -1702,12 +1708,12 @@ function fallback_module () {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
-const { drive } = sdb
 
 module.exports = tabbed_editor
 
 async function tabbed_editor(opts, protocol) {
   const { sdb } = await get(opts.sid)
+  const { drive } = sdb
   const on = {
     style: inject_style,
     files: onfiles,
@@ -1915,7 +1921,8 @@ async function tabbed_editor(opts, protocol) {
   async function onbatch(batch) {
     for (const { type, paths } of batch){
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
-      (on[type] || fail)(data, type)
+      const func = on[type] || fail
+      func(data, type)
     }
     if (!init) {
       init = true
@@ -2286,7 +2293,6 @@ function fallback_module() {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
-const { drive } = sdb
 
 module.exports = component
 
@@ -2410,7 +2416,8 @@ async function component (opts, protocol) {
   async function onbatch(batch) {
     for (const { type, paths } of batch){
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
-      (on[type] || fail)(data, type)
+      const func = on[type] || fail
+      func(data, type)
     }
     if (!init) {
       variables.forEach(create_btn)
@@ -2495,7 +2502,6 @@ function fallback_module () {
 const state = require('STATE')
 const state_db = state(__filename)
 const { sdb, get } = state_db(fallback_module)
-const {drive} = sdb
 
 const tabs_component = require('tabs')
 const task_manager = require('task_manager')
@@ -2504,6 +2510,7 @@ module.exports = tabsbar
 
 async function tabsbar (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
+  const {drive} = sdb
   const on = {
     style: inject_style,
     icons: inject_icons
@@ -2560,7 +2567,8 @@ async function tabsbar (opts, protocol) {
   async function onbatch(batch) {
     for (const { type, paths } of batch){
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
-      (on[type] || fail)(data, type)
+      const func = on[type] || fail
+      func(data, type)
     }
   }
   function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
@@ -2662,12 +2670,12 @@ function fallback_module () {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
-const {drive} = sdb
 
 module.exports = task_manager
 
 async function task_manager (opts, callback = () => console.log('task manager clicked')) {
   const { id, sdb } = await get(opts.sid)
+  const {drive} = sdb
   let number = 0
   const on = {
     style: inject,
@@ -2689,7 +2697,8 @@ async function task_manager (opts, callback = () => console.log('task manager cl
   async function onbatch(batch) {
     for (const { type, paths } of batch){
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
-      (on[type] || fail)(data, type)
+      const func = on[type] || fail
+      func(data, type)
     }
   }
   function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
@@ -2749,7 +2758,6 @@ function fallback_module () {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
-const {drive} = sdb
 
 const action_bar = require('action_bar')
 const tabsbar = require('tabsbar')
@@ -2758,6 +2766,7 @@ module.exports = taskbar
 
 async function taskbar(opts, protocol) {
   const { id, sdb } = await get(opts.sid)
+  const {drive} = sdb
   const on = {
     style: inject_style
   }
@@ -2794,7 +2803,8 @@ async function taskbar(opts, protocol) {
   async function onbatch(batch) {
     for (const { type, paths } of batch){
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
-      (on[type] || fail)(data, type)
+      const func = on[type] || fail
+      func(data, type)
     }
   }
 
@@ -2905,7 +2915,6 @@ function fallback_module() {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
-const {drive} = sdb
 
 const space = require('space')
 const taskbar = require('taskbar')
@@ -2914,6 +2923,7 @@ module.exports = theme_widget
 
 async function theme_widget (opts) {
   const { id, sdb } = await get(opts.sid)
+  const {drive} = sdb
   const on = {
     style: inject_style
   }
@@ -2947,7 +2957,8 @@ async function theme_widget (opts) {
   async function onbatch(batch) {
     for (const { type, paths } of batch){
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
-      (on[type] || fail)(data, type)
+      const func = on[type] || fail
+      func(data, type)
     }
   }
   function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
@@ -3030,7 +3041,7 @@ function fallback_module () {
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/index.js")
 },{"STATE":1,"space":7,"taskbar":12}],14:[function(require,module,exports){
-const hash = '6fc73361a2ea42065a15729b0974a1e5c10fa764'
+const hash = 'e88cdfe42f14067eecc46de5361a49e1a92974a9'
 const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/' + hash + '/'
 const init_url = prefix + 'doc/state/example/init.js'
 const args = arguments
