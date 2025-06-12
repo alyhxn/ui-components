@@ -1,5 +1,5 @@
 const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/a31832ad3cb24fe15ab36bdc73a929f43179d7b8/'
-const init_url = location.hash === '#dev' ? 'web/init.js' : prefix + 'doc/state/example/init.js'
+const init_url = location.hash === '#dev' ? 'web/init.js' : prefix + 'src/node_modules/init.js'
 const args = arguments
 
 fetch(init_url, { cache: 'no-store' }).then(res => res.text()).then(async source => {
