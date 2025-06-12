@@ -1,5 +1,6 @@
 const default_prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/refs/heads/main/'
 const USE_LOCAL = location.hash === '#dev'
+const CACHE_MODULES = ['io', 'quick_editor', 'STATE']
 
 module.exports = init
 async function init (args, prefix = default_prefix) {
@@ -69,7 +70,7 @@ async function patch_cache_in_browser (source_cache, module_cache, prefix) {
       return module(...args)
       function require (name) {
         const identifier = resolve(name)
-        if (name.endsWith('STATE') || name === 'io') {
+        if (CACHE_MODULES.some(suffix => name.endsWith(suffix))) {
           const modulepath = meta.modulepath.join('>')
           let original_export
           if (name.endsWith('STATE')) { original_export = STATE_JS } else { original_export = require.cache[identifier] || (require.cache[identifier] = original(name)) }

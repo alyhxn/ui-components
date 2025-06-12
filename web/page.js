@@ -18,6 +18,7 @@ const actions = require('../src/node_modules/actions')
 const tabbed_editor = require('../src/node_modules/tabbed_editor')
 const task_manager = require('../src/node_modules/task_manager')
 const quick_actions = require('../src/node_modules/quick_actions')
+const editor = require('../src/node_modules/quick_editor')
 
 const imports = {
   theme_widget,
@@ -69,12 +70,20 @@ async function boot (opts) {
   const el = document.body
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
+  <label class="toggle-switch">
+    <input type="checkbox">
+    <span class="slider"></span>
+  </label>
   <div class="navbar-slot"></div>
   <div class="components-wrapper-container">
     <div class="components-wrapper"></div>
   </div>`
   el.style.margin = 0
   el.style.backgroundColor = '#d8dee9'
+  const editor_btn = shadow.querySelector('input')
+  const toggle = editor()
+  editor_btn.onclick = toggle
+
   // ----------------------------------------
   // ELEMENTS
   // ----------------------------------------
@@ -332,6 +341,7 @@ function fallback_module () {
       'style': 'style',
     }
   }
+  subs['../src/node_modules/quick_editor'] = 0
   return {
     _: subs,
     drive: {
@@ -374,7 +384,49 @@ function fallback_module () {
           .component-content {
             width: 100%;
             height: 100%;
-          }`
+          }
+          .toggle-switch {
+          position: relative;
+          display: inline-block;
+          width: 50px;
+          height: 26px;
+        }
+
+        .toggle-switch input {
+          opacity: 0;
+          width: 0;
+          height: 0;
+        }
+
+        .slider {
+          position: absolute;
+          cursor: pointer;
+          inset: 0;
+          background-color: #ccc;
+          border-radius: 26px;
+          transition: 0.4s;
+        }
+
+        .slider::before {
+          content: "";
+          position: absolute;
+          height: 20px;
+          width: 20px;
+          left: 3px;
+          bottom: 3px;
+          background-color: white;
+          border-radius: 50%;
+          transition: 0.4s;
+        }
+
+        input:checked + .slider {
+          background-color: #2196F3;
+        }
+
+        input:checked + .slider::before {
+          transform: translateX(24px);
+        }
+        `
         }
       }
     }
