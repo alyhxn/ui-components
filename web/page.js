@@ -77,7 +77,9 @@ async function boot (opts) {
   <div class="navbar-slot"></div>
   <div class="components-wrapper-container">
     <div class="components-wrapper"></div>
-  </div>`
+  </div>
+  <style>
+  </style>`
   el.style.margin = 0
   el.style.backgroundColor = '#d8dee9'
   const editor_btn = shadow.querySelector('input')
@@ -90,6 +92,7 @@ async function boot (opts) {
 
   const navbar_slot = shadow.querySelector('.navbar-slot')
   const components_wrapper = shadow.querySelector('.components-wrapper')
+  const style = shadow.querySelector('style')
 
   const entries = Object.entries(imports)
   const wrappers = []
@@ -237,10 +240,9 @@ async function create_component (entries_obj) {
   }
   function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
   function inject(data) {
-    const style_data = Array.isArray(data) ? data[0] : (JSON.parse(data))[0]
-    const sheet = new CSSStyleSheet()
-    sheet.replaceSync(style_data)
-    shadow.adoptedStyleSheets = [sheet]
+    style.replaceChildren((() => {
+      return document.createElement('style').textContent = data[0]
+    })())
   }
 }
 function fallback_module () {
