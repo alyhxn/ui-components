@@ -18,6 +18,7 @@ const actions = require('../src/node_modules/actions')
 const tabbed_editor = require('../src/node_modules/tabbed_editor')
 const task_manager = require('../src/node_modules/task_manager')
 const quick_actions = require('../src/node_modules/quick_actions')
+const graph_explorer = require('../src/node_modules/graph_explorer')
 const editor = require('../src/node_modules/quick_editor')
 
 const imports = {
@@ -31,7 +32,8 @@ const imports = {
   actions,
   tabbed_editor,
   task_manager,
-  quick_actions
+  quick_actions,
+  graph_explorer
 }
 config().then(() => boot({ sid: '' }))
 
@@ -240,9 +242,7 @@ async function create_component (entries_obj) {
   }
   function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
   function inject(data) {
-    style.replaceChildren((() => {
-      return document.createElement('style').textContent = data[0]
-    })())
+    style.innerHTML = data.join('\n')
   }
 }
 function fallback_module () {
@@ -258,7 +258,8 @@ function fallback_module () {
     '../src/node_modules/actions',
     '../src/node_modules/tabbed_editor',
     '../src/node_modules/task_manager',
-    '../src/node_modules/quick_actions'
+    '../src/node_modules/quick_actions',
+    '../src/node_modules/graph_explorer'
   ]
   const subs = {}
   names.forEach(subgen)
@@ -334,6 +335,15 @@ function fallback_module () {
       'icons': 'icons',
       'actions': 'actions',
       'hardcons': 'hardcons'
+    }
+  }
+  subs['../src/node_modules/graph_explorer'] = {
+    $: '',
+    0: '',
+    mapping: {
+      'style': 'style',
+      'graph_data': 'graph_data',
+      'icons': 'icons'
     }
   }
   subs[menuname] = { 
