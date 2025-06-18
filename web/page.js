@@ -2,7 +2,7 @@ localStorage.clear()
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
 const { sdb } = statedb(fallback_module)
-const {drive} = sdb
+const {drive, admin} = sdb
 /******************************************************************************
   PAGE
 ******************************************************************************/
@@ -74,10 +74,6 @@ async function boot (opts) {
   const el = document.body
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
-  <label class="toggle-switch">
-    <input type="checkbox">
-    <span class="slider"></span>
-  </label>
   <div class="navbar-slot"></div>
   <div class="components-wrapper-container">
     <div class="components-wrapper"></div>
@@ -86,9 +82,7 @@ async function boot (opts) {
   </style>`
   el.style.margin = 0
   el.style.backgroundColor = '#d8dee9'
-  const editor_btn = shadow.querySelector('input')
-  const toggle = editor()
-  editor_btn.onclick = toggle
+
 
   // ----------------------------------------
   // ELEMENTS
@@ -147,7 +141,9 @@ async function create_component (entries_obj) {
     const inner = outer.querySelector('.component-wrapper')
     const component_content = await factory(subs[index])
     component_content.className = 'component-content'
-    inner.append(component_content)
+    
+    const node_id = admin.status.s2i[subs[index].sid]
+    inner.append(component_content, editor(node_id, admin.status.dataset))
     components_wrapper.appendChild(outer)
     wrappers[index] = { outer, inner, name, checkbox_state: is_initially_checked }
     index++
@@ -441,6 +437,128 @@ function fallback_module () {
         input:checked + .slider::before {
           transform: translateX(24px);
         }
+        .component-wrapper {
+        position: relative;
+        overflow: visible;
+      }
+      .component-wrapper:hover::before {
+        content: '';
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        top: 0;
+        left: 0;
+        border: 4px solid skyblue;
+        pointer-events: none;
+        z-index: 4;
+      }
+      .component-wrapper:hover .quick-editor {
+        display: block;
+      }
+      .quick-editor {
+        display: none;
+        position: absolute;
+        top: -5px;
+        right: -10px;
+        z-index: 5;
+      }
+
+      .quick-editor .dots-button {
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        line-height: 1;
+        background-color: white;
+        letter-spacing: 1px;
+        padding: 3px 5px;
+        border-radius: 20%;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      }
+
+      .quick-editor .quick-menu {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        background: white;
+        padding: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        white-space: nowrap;
+        z-index: 10;
+        width: 400px;
+      }
+
+      .quick-editor .hidden {
+        display: none;
+      }
+
+      .top-btns {
+        display: flex;
+        margin-bottom: 8px;
+      }
+
+      .tab-button {
+        flex: 1;
+        padding: 6px 10px;
+        background: #eee;
+        border: none;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+      }
+      .tab-button.active {
+        background: white;
+        border-bottom: 2px solid #4CAF50;
+      }
+      .tab-content {
+        display: none;
+      }
+      .tab-content.active {
+        display: block;
+      }
+
+      .sub-btns {
+        float: right;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-left: 5px;
+      }
+
+      .sub-btn {
+        padding: 4px 8px;
+        background: #f1f1f1;
+        border: none;
+        cursor: pointer;
+        text-align: right;
+      }
+      .sub-btn.active {
+        background: #d0f0d0;
+      }
+
+      .subtab-content {
+        overflow: hidden;
+      }
+
+      .subtab-textarea {
+        width: 300px;
+        height: 400px;
+        display: none;
+        resize: vertical;
+      }
+      .subtab-textarea.active {
+        display: block;
+      }
+
+      .quick-editor .apply-button {
+        display: block;
+        margin-top: 10px;
+        padding: 5px 10px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+
         `
         }
       }
