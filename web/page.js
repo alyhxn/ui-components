@@ -20,6 +20,7 @@ const task_manager = require('../src/node_modules/task_manager')
 const quick_actions = require('../src/node_modules/quick_actions')
 const graph_explorer = require('../src/node_modules/graph_explorer')
 const editor = require('../src/node_modules/quick_editor')
+const steps_wizard = require('../src/node_modules/steps_wizard')
 
 const imports = {
   theme_widget,
@@ -33,7 +34,8 @@ const imports = {
   tabbed_editor,
   task_manager,
   quick_actions,
-  graph_explorer
+  graph_explorer,
+  steps_wizard,
 }
 config().then(() => boot({ sid: '' }))
 
@@ -255,7 +257,8 @@ function fallback_module () {
     '../src/node_modules/tabbed_editor',
     '../src/node_modules/task_manager',
     '../src/node_modules/quick_actions',
-    '../src/node_modules/graph_explorer'
+    '../src/node_modules/graph_explorer',
+    '../src/node_modules/steps_wizard'
   ]
   const subs = {}
   names.forEach(subgen)
