@@ -1,4 +1,3 @@
-localStorage.clear()
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
 const { sdb } = statedb(fallback_module)
