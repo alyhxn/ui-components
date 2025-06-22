@@ -835,415 +835,307 @@ const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 
-module.exports = graph_explorer
+module.exports = component
 
-async function graph_explorer (opts, protocol) {
-  const { id, sdb } = await get(opts.sid)
-  const {drive} = sdb
+async function component (opts, protocol) {
+  const { sdb } = await get(opts.sid)
+  const { drive } = sdb
   const on = {
-    style: inject,
-    graph_data: on_graph_data,
+    style: inject_style,
+    entries: on_entries,
     icons: iconject
   }
 
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
-  <div class="graph-explorer-container">
-    <div class="graph-entries"></div>
-  </div>
-  <style>
-  </style>`
-  
-  const style = shadow.querySelector('style')
-  const graph_entries = shadow.querySelector('.graph-entries')
+  <div class="graph-explorer">
+    <div class="explorer-container"></div>
+  </div>`
 
+  const container = shadow.querySelector('.explorer-container')
+
+  /******************************************************************************
+  Variables for entries and view management. To get data from the state drive.
+  ******************************************************************************/
+  let entries = []
+  let view = []
+  let view_num = 0
+  let expanded_nodes = new Set()
   let init = false
-  let graph_data = []
-  let icons = {}
-  let expanded_entries = new Set()
-  let super_nodes = new Map()
-  let visible_super_nodes = new Set()
-  
+
+  /******************************************************************************
+  Intersection Observer to track which nodes are currently in view.
+  //TODO: Lazy loading of nodes based on scroll visibility.
+  ******************************************************************************/
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const node_id = entry.target.dataset.path
+      if (entry.isIntersecting) {
+        if (!view.includes(node_id)) {
+          view.push(node_id)
+        }
+      } else {
+        const index = view.indexOf(node_id)
+        if (index !== -1) {
+          view.splice(index, 1)
+        }
+      }
+    })
+  }, {
+    root: container,
+    threshold: 0.1
+  })
+
+  function calculate_view_num() {
+    const container_height = container.clientHeight
+    const node_height = 24
+    view_num = Math.ceil(container_height / node_height) * 3 || 30
+    // console.log('view:', view)
+  }
+
+
   const subs = await sdb.watch(onbatch)
+
+  /******************************************************************************
+  Resize Observer
+  ******************************************************************************/
+  const resize_observer = new ResizeObserver(() => {
+    calculate_view_num()
+    render_visible_nodes()
+  })
+  resize_observer.observe(container)
+
   let send = null
-  let _ = null
   if (protocol) {
     send = protocol(msg => onmessage(msg))
-    _ = { up: send }
   }
 
   return el
 
-  function create_graph_entry(entry, level = 0, parent_path = '', parent_entry = null, is_super_node = false) {
-    const entry_el = document.createElement('div')
-    entry_el.className = 'graph-entry'
-    entry_el.style.paddingLeft = `${level * 20}px`
-    
-    const current_path = parent_path ? `${parent_path}/${entry.name}` : entry.name
-    const super_node_path = is_super_node ? `super_${current_path}` : current_path
-    const has_children = entry.children && entry.children.length > 0
-    const is_expanded = expanded_entries.has(super_node_path)
-    
-    // Store parent relationship
-    if (parent_entry) {
-      super_nodes.set(current_path, parent_entry)
-    }
-    
-    const tree_symbol = get_tree_symbol(entry, level, is_expanded, has_children, is_super_node)
-    const icon = icons[entry.type] || entry.icon || '📁'
-    
-    entry_el.innerHTML = `
-    <span class="tree-symbol" data-path="${current_path}">${tree_symbol}</span>
-    <span class="entry-icon" data-path="${current_path}">${icon}</span>
-    <span class="entry-name">${entry.name}</span>
-    `
-    
-    const tree_symbol_el = entry_el.querySelector('.tree-symbol')
-    const icon_el = entry_el.querySelector('.entry-icon')
-    
-    // Add click event to tree symbol to show super node
-    if (parent_entry && level > 0 && !is_super_node) {
-      tree_symbol_el.onclick = () => toggle_super_node(current_path, parent_entry)
-      tree_symbol_el.style.cursor = 'pointer'
-      tree_symbol_el.title = `Show parent: ${parent_entry.name}`
-    }
-    
-    // Add click event to icon for expanding children
-    if (has_children) {
-      icon_el.onclick = () => toggle_entry(super_node_path, entry)
-    }
-    
-    return entry_el
-  }
-
-  function get_tree_symbol(entry, level, is_expanded, has_children, is_super_node = false) {
-    if (level === 0) {
-      return has_children ? (is_expanded ? '🪄┬' : '🪄─') : '🪄─'
-    }
-    
-    const prefix = is_super_node ? '┌' : '├'
-    
-    if (has_children) {
-      return is_expanded ? `${prefix}┬` : `${prefix}─`
-    } else {
-      return `${prefix}─`
-    }
-  }
-
-  function toggle_entry(path, entry) {
-    if (expanded_entries.has(path)) {
-      expanded_entries.delete(path)
-    } else {
-      expanded_entries.add(path)
-    }
-    render_graph()
-    
-    if (protocol && _) {
-      _.up({ 
-        type: 'entry_toggled', 
-        data: { path, expanded: expanded_entries.has(path), entry } 
-      })
-    }
-  }
-
-  function toggle_super_node(child_path, parent_entry) {
-    const super_node_key = `super_${child_path}`
-    
-    if (visible_super_nodes.has(super_node_key)) {
-      visible_super_nodes.delete(super_node_key)
-    } else {
-      visible_super_nodes.add(super_node_key)
-    }
-    
-    render_graph()
-    
-    if (protocol && _) {
-      _.up({ 
-        type: 'super_node_toggled', 
-        data: { child_path, parent_entry, visible: visible_super_nodes.has(super_node_key) } 
-      })
-    }
-  }
-
-  function render_graph() {
-    graph_entries.innerHTML = ''
-    super_nodes.clear() // Clear previous parent relationships
-    
-    graph_data.forEach(entry => {
-      render_entry_with_super_nodes(entry)
-    })
-  }
-
-  function render_entry_with_super_nodes(entry, level = 0, parent_path = '', parent_entry = null) {
-    const current_path = parent_path ? `${parent_path}/${entry.name}` : entry.name
-    const super_node_key = `super_${current_path}`
-    
-    // Show super node if it's visible - at the same level as current entry
-    if (level > 0 && visible_super_nodes.has(super_node_key) && parent_entry) {
-      const super_node_el = create_graph_entry(parent_entry, level, parent_path, null, true)
-      graph_entries.appendChild(super_node_el)
-      
-      // Show super node children if expanded
-      const super_node_expanded = expanded_entries.has(super_node_key)
-      if (super_node_expanded && parent_entry.children && parent_entry.children.length > 0) {
-        parent_entry.children.forEach(child => {
-          // Render all children of the super node at the next level with correct parent path
-          const super_parent_path = parent_path ? `${parent_path}/${parent_entry.name}` : parent_entry.name
-          render_entry_with_super_nodes(child, level + 1, super_parent_path, parent_entry)
-        })
-      }
-    }
-    
-    // Create and append the main entry
-    const entry_el = create_graph_entry(entry, level, parent_path, parent_entry)
-    graph_entries.appendChild(entry_el)
-    
-    // Recursively render children if expanded
-    const has_children = entry.children && entry.children.length > 0
-    const is_expanded = expanded_entries.has(current_path)
-    
-    if (is_expanded && has_children) {
-      entry.children.forEach(child => {
-        render_entry_with_super_nodes(child, level + 1, current_path, entry)
-      })
-    }
-  }
-
-  function onmessage ({ type, data }) {
-    if (type === 'expand_entry') {
-      expanded_entries.add(data.path)
-      render_graph()
-    } else if (type === 'collapse_entry') {
-      expanded_entries.delete(data.path)
-      render_graph()
-    } else if (type === 'show_super_node') {
-      visible_super_nodes.add(`super_${data.path}`)
-      render_graph()
-    } else if (type === 'hide_super_node') {
-      visible_super_nodes.delete(`super_${data.path}`)
-      render_graph()
-    }
+  function onmessage(msg) {
+    // console.log('Graph Explorer received message:', msg)
   }
 
   async function onbatch(batch) {
-    for (const { type, paths } of batch){
+    for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
       const func = on[type] || fail
       func(data, type)
     }
-    if (!init && graph_data.length > 0) {
-      render_graph()
+    if (!init && entries.length > 0) {
+      calculate_view_num()
+      render_visible_nodes()
       init = true
     }
   }
 
-  function fail(data, type) { 
+  function fail (data, type) { 
     throw new Error('invalid message', { cause: { data, type } }) 
   }
 
-  function inject(data) {
-    style.innerHTML = data.join('\n')
+  function on_entries(data) {
+    entries = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
   }
-
-  function on_graph_data(data) {
-    graph_data = JSON.parse(data[0])
-  }
-
   function iconject(data) {
-    icons = {
-      root: data[0] || '🌐',
-      folder: data[1] || '📁',
-      code: data[2] || '📚',
-      data: data[3] || '📁',
-      tasks: data[4] || '🗄️'
+    icons = data
+  }
+  function inject_style(data) {
+    const sheet = new CSSStyleSheet()
+    sheet.replaceSync(data)
+    shadow.adoptedStyleSheets = [sheet]
+  }
+  /******************************************************************************
+  Function for the rendering based on the visible nodes.
+  ******************************************************************************/
+  function render_visible_nodes() {
+    container.replaceChildren()
+    if (entries.length === 0) return
+    
+    const visible_entries = calculate_visible_entries()
+    visible_entries.forEach(entry => {
+      const node = create_node(entry)
+      // console.log(container, node)
+      container.appendChild(node)
+      observer.observe(node)
+    })
+  }
+
+  function calculate_visible_entries() {
+    const visible_entries = []
+    visible_entries.push(entries[0])
+    let queue = [...entries[0].subs.map(index => entries[index])]
+    
+    while (queue.length > 0 && visible_entries.length < view_num) {
+      const entry = queue.shift()
+      if (!entry) continue
+      visible_entries.push(entry)
+
+      const entry_path = get_full_path(entry)
+      if (expanded_nodes.has(entry_path) && entry.subs && entry.subs.length > 0) {
+        queue = [...entry.subs.map(index => entries[index]), ...queue]
+      }
     }
+    
+    return visible_entries
+  }
+  /******************************************************************************
+  Create a node element for the explorer tree.
+  ******************************************************************************/
+  function create_node(entry) {
+    const node = document.createElement('div')
+    const depth = calculate_depth(entry.path)
+    const is_expanded = expanded_nodes.has(get_full_path(entry))
+    const has_children = entry.subs && entry.subs.length > 0
+    
+    let icon = get_icon_for_type(entry.type)
+    let prefix = create_tree_prefix(entry, depth, is_expanded, has_children)
+    
+    node.className = 'explorer-node'
+    node.dataset.path = get_full_path(entry)
+    node.dataset.index = entries.indexOf(entry)
+    node.style.paddingLeft = `${depth * 10}px`
+    
+    node.innerHTML = `
+      <span class="tree-prefix">${prefix}</span>
+      <span class="node-icon">${icon}</span>
+      <span class="node-name">${entry.name}</span>
+    `
+    
+    // Setup click handlers
+    const prefix_el = node.querySelector('.tree-prefix')
+    const icon_el = node.querySelector('.node-icon')
+    
+    if (has_children) {
+      prefix_el.onclick = null
+      //TODO: Add supernode support
+      icon_el.onclick = () => toggle_node(entry)
+    }
+    
+    return node
+  }
+
+  // Toggle node expansion state
+  function toggle_node(entry) {
+    const path = get_full_path(entry)
+    
+    if (expanded_nodes.has(path)) {
+      expanded_nodes.delete(path)
+    } else {
+      expanded_nodes.add(path)
+    }
+    render_visible_nodes()
+    // console.log('view:', view)
+    // console.log('view:', view_num)
+  }
+
+  // Get appropriate icon for entry type
+  function get_icon_for_type(type) {
+    const type_icons = {
+      'root': '🌐',
+      'folder': '📁',
+      'file': '📄',
+      'html-file': '📄',
+      'js-file': '📄',
+      'css-file': '🖌️',
+      'json-file': '🎨'
+    }
+    
+    return type_icons[type] || '📄'
+  }
+  /******************************************************************************
+   Prefix creation for tree structure.
+   //TODO: Add support for different icons based on entry type.
+  /******************************************************************************/
+  function create_tree_prefix(entry, depth, is_expanded, has_children) {
+    if (depth === 0) return has_children ? (is_expanded ? '🪄┬' : '🪄┬') : '🪄─'
+    if (has_children) {
+      return is_expanded ? '├┬' : '├─'
+    } else {
+      return '└─'
+    }
+  }
+
+  function calculate_depth(path) {
+    if (!path) return 0
+    return (path.match(/\//g) || []).length
+  }
+  function get_full_path(entry) {
+    return entry.path + entry.name + '/'
   }
 }
 
-function fallback_module () {
+function fallback_module() {
   return {
     api: fallback_instance
   }
-
-  function fallback_instance () {
+  
+  function fallback_instance() {
     return {
       drive: {
         'style/': {
           'theme.css': {
             raw: `
-              .graph-explorer-container {
-                background-color: #0d1117;
-                color: #c9d1d9;
-                font-family: 'Courier New', monospace;
-                font-size: 14px;
-                line-height: 1.4;
-                padding: 12px;
-                border-radius: 6px;
-                border: 1px solid #21262d;
-                min-height: 200px;
-                max-height: 400px;
-                overflow-y: auto;
-              }
-              .graph-entries {
-                display: flex;
-                flex-direction: column;
-                gap: 2px;
-              }
-              .graph-entry {
-                display: flex;
-                align-items: center;
-                gap: 4px;
-                padding: 2px 0;
-                white-space: nowrap;
+              .graph-explorer {
+                height: 300px;
+                overflow: auto;
+                font-family: monospace;
+                color: #eee;
+                background-color: #2d3440;
                 user-select: none;
               }
-              .tree-symbol {
-                color: #7c3aed;
-                font-weight: bold;
-                min-width: 24px;
+              
+              .explorer-container {
+                padding: 10px;
+                height: 300px;
               }
-              .entry-icon {
+              
+              .explorer-node {
+                display: flex;
+                align-items: center;
+                padding: 2px 0;
+                white-space: nowrap;
                 cursor: pointer;
-                font-size: 16px;
-                transition: transform 0.1s ease;
-                min-width: 20px;
               }
-              .entry-icon:hover {
-                transform: scale(1.1);
+              
+              .explorer-node:hover {
+                background-color: rgba(255, 255, 255, 0.1);
               }
-              .entry-name {
-                color: #f0f6fc;
-                font-weight: 500;
+              
+              .tree-prefix {
+                margin-right: 4px;
+                opacity: 0.7;
+                cursor: pointer;
               }
-              .graph-explorer-container::-webkit-scrollbar {
-                width: 6px;
+              
+              .node-icon {
+                margin-right: 6px;
+                cursor: pointer;
               }
-              .graph-explorer-container::-webkit-scrollbar-track {
-                background: #161b22;
-                border-radius: 3px;
-              }
-              .graph-explorer-container::-webkit-scrollbar-thumb {
-                background: #30363d;
-                border-radius: 3px;
-              }
-              .graph-explorer-container::-webkit-scrollbar-thumb:hover {
-                background: #484f58;
+              
+              .node-name {
+                overflow: hidden;
+                text-overflow: ellipsis;
               }
             `
           }
         },
-        'graph_data/': {
-          'structure.json': {
-            raw: JSON.stringify([
-              {
-                name: '/',
-                type: 'root',
-                icon: '🌐',
-                children: [
-                  {
-                    name: 'pins/',
-                    type: 'folder',
-                    icon: '📁',
-                    children: []
-                  },
-                  {
-                    name: 'code/',
-                    type: 'code',
-                    icon: '📚',
-                    children: [
-                      {
-                        name: 'playproject_website',
-                        type: 'folder',
-                        icon: '📖',
-                        children: [
-                          {
-                            name: 'index.html',
-                            type: 'file',
-                            icon: '📄',
-                            children: []
-                          },
-                          {
-                            name: 'main.js',
-                            type: 'file',
-                            icon: '📄',
-                            children: []
-                          }
-                        ]
-                      },
-                      {
-                        name: 'theme_widget',
-                        type: 'folder',
-                        icon: '📖',
-                        children: [
-                          {
-                            name: 'widget.html',
-                            type: 'file',
-                            icon: '📄',
-                            children: []
-                          },
-                          {
-                            name: 'widget.js',
-                            type: 'file',
-                            icon: '📄',
-                            children: []
-                          }
-                        ]
-                      }
-                    ]
-                  },
-                  {
-                    name: 'data/',
-                    type: 'data',
-                    icon: '📁',
-                    children: [
-                      {
-                        name: 'themes/',
-                        type: 'folder',
-                        icon: '📁',
-                        children: [
-                          {
-                            name: 'fantasy.json',
-                            type: 'file',
-                            icon: '🎨',
-                            children: []
-                          },
-                          {
-                            name: 'night.json',
-                            type: 'file',
-                            icon: '🎨',
-                            children: []
-                          }
-                        ]
-                      }
-                    ]
-                  },
-                  {
-                    name: 'tasks/',
-                    type: 'tasks',
-                    icon: '🗄️',
-                    children: []
-                  }
-                ]
-              }
-            ])
+        'entries/': {
+          'graph.json': {
+            '$ref': 'entries.json'
           }
         },
         'icons/': {
-          'root.txt': {
-            raw: '🌐'
-          },
-          'folder.txt': {
-            raw: '📁'
-          },
-          'code.txt': {
-            raw: '📚'
-          },
-          'data.txt': {
-            raw: '📁'
-          },
-          'tasks.txt': {
-            raw: '🗄️'
+          'folder_icons.json': {
+            raw: `{
+              "root": "🌐",
+              "folder": "📁",
+              "file": "📄",
+              "html-file": "📄",
+              "js-file": "📄",
+              "css-file": "🖌️",
+              "json-file": "🎨"
+            }`
           }
         }
       }
@@ -1251,7 +1143,7 @@ function fallback_module () {
   }
 }
 
-}).call(this)}).call(this,"/src/node_modules/graph_explorer.js")
+}).call(this)}).call(this,"/src/node_modules/graph_explorer/graph_explorer.js")
 },{"STATE":1}],6:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
@@ -2320,7 +2212,7 @@ function fallback_module () {
           0: '',
           mapping: {
             'style': 'style',
-            'graph_data': 'graph_data',
+            'entries': 'entries',
             'icons': 'icons'
           }
         }
@@ -2591,7 +2483,7 @@ async function tabbed_editor(opts, protocol) {
   function create_editor(tab_data) {
     let parsed_data = JSON.parse(tab_data[0])
     const file_content = files[parsed_data.id] || ''
-    console.log('Creating editor for:', parsed_data)
+    // console.log('Creating editor for:', parsed_data)
 
     editor_content.replaceChildren()
 
@@ -3859,6 +3751,7 @@ async function create_component (entries_obj) {
     `
     const inner = outer.querySelector('.component-wrapper')
     const component_content = await factory(subs[index])
+    console.log('component_content', index)
     component_content.className = 'component-content'
     inner.append(component_content)
     components_wrapper.appendChild(outer)
@@ -4058,7 +3951,7 @@ function fallback_module () {
     0: '',
     mapping: {
       'style': 'style',
-      'graph_data': 'graph_data',
+      'entries': 'entries',
       'icons': 'icons'
     }
   }
