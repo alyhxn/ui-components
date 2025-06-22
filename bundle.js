@@ -875,21 +875,22 @@ async function graph_explorer (opts, protocol) {
 
   return el
 
-  function create_graph_entry(entry, level = 0, parent_path = '', parent_entry = null) {
+  function create_graph_entry(entry, level = 0, parent_path = '', parent_entry = null, is_super_node = false) {
     const entry_el = document.createElement('div')
     entry_el.className = 'graph-entry'
     entry_el.style.paddingLeft = `${level * 20}px`
     
     const current_path = parent_path ? `${parent_path}/${entry.name}` : entry.name
+    const super_node_path = is_super_node ? `super_${current_path}` : current_path
     const has_children = entry.children && entry.children.length > 0
-    const is_expanded = expanded_entries.has(current_path)
+    const is_expanded = expanded_entries.has(super_node_path)
     
     // Store parent relationship
     if (parent_entry) {
       super_nodes.set(current_path, parent_entry)
     }
     
-    const tree_symbol = get_tree_symbol(entry, level, is_expanded, has_children)
+    const tree_symbol = get_tree_symbol(entry, level, is_expanded, has_children, is_super_node)
     const icon = icons[entry.type] || entry.icon || '📁'
     
     entry_el.innerHTML = `
@@ -902,7 +903,7 @@ async function graph_explorer (opts, protocol) {
     const icon_el = entry_el.querySelector('.entry-icon')
     
     // Add click event to tree symbol to show super node
-    if (parent_entry && level > 0) {
+    if (parent_entry && level > 0 && !is_super_node) {
       tree_symbol_el.onclick = () => toggle_super_node(current_path, parent_entry)
       tree_symbol_el.style.cursor = 'pointer'
       tree_symbol_el.title = `Show parent: ${parent_entry.name}`
@@ -910,21 +911,23 @@ async function graph_explorer (opts, protocol) {
     
     // Add click event to icon for expanding children
     if (has_children) {
-      icon_el.onclick = () => toggle_entry(current_path, entry)
+      icon_el.onclick = () => toggle_entry(super_node_path, entry)
     }
     
     return entry_el
   }
 
-  function get_tree_symbol(entry, level, is_expanded, has_children) {
+  function get_tree_symbol(entry, level, is_expanded, has_children, is_super_node = false) {
     if (level === 0) {
       return has_children ? (is_expanded ? '🪄┬' : '🪄─') : '🪄─'
     }
     
+    const prefix = is_super_node ? '┌' : '├'
+    
     if (has_children) {
-      return is_expanded ? '├┬' : '├─'
+      return is_expanded ? `${prefix}┬` : `${prefix}─`
     } else {
-      return '├─'
+      return `${prefix}─`
     }
   }
 
@@ -963,23 +966,6 @@ async function graph_explorer (opts, protocol) {
     }
   }
 
-  function create_super_node_entry(parent_entry, child_path, level) {
-    const super_node_el = document.createElement('div')
-    super_node_el.className = 'graph-entry super-node'
-    super_node_el.style.paddingLeft = `${(level - 1) * 20}px`
-    
-    const parent_icon = icons[parent_entry.type] || parent_entry.icon || '📁'
-    
-    super_node_el.innerHTML = `
-    <span class="tree-symbol">┌─</span>
-    <span class="entry-icon super-node-icon">${parent_icon}</span>
-    <span class="entry-name super-node-name">${parent_entry.name}</span>
-    <span class="super-node-label">(parent)</span>
-    `
-    
-    return super_node_el
-  }
-
   function render_graph() {
     graph_entries.innerHTML = ''
     super_nodes.clear() // Clear previous parent relationships
@@ -993,10 +979,20 @@ async function graph_explorer (opts, protocol) {
     const current_path = parent_path ? `${parent_path}/${entry.name}` : entry.name
     const super_node_key = `super_${current_path}`
     
-    // Show super node if it's visible
+    // Show super node if it's visible - at the same level as current entry
     if (level > 0 && visible_super_nodes.has(super_node_key) && parent_entry) {
-      const super_node_el = create_super_node_entry(parent_entry, current_path, level)
+      const super_node_el = create_graph_entry(parent_entry, level, parent_path, null, true)
       graph_entries.appendChild(super_node_el)
+      
+      // Show super node children if expanded
+      const super_node_expanded = expanded_entries.has(super_node_key)
+      if (super_node_expanded && parent_entry.children && parent_entry.children.length > 0) {
+        parent_entry.children.forEach(child => {
+          // Render all children of the super node at the next level with correct parent path
+          const super_parent_path = parent_path ? `${parent_path}/${parent_entry.name}` : parent_entry.name
+          render_entry_with_super_nodes(child, level + 1, super_parent_path, parent_entry)
+        })
+      }
     }
     
     // Create and append the main entry
@@ -1119,30 +1115,6 @@ function fallback_module () {
               .entry-name {
                 color: #f0f6fc;
                 font-weight: 500;
-              }
-              .super-node {
-                background-color: #1c2128;
-                border-left: 2px solid #7c3aed;
-                margin: 1px 0;
-                border-radius: 3px;
-                padding: 2px 4px;
-              }
-              .super-node .tree-symbol {
-                color: #fbbf24;
-              }
-              .super-node-icon {
-                opacity: 0.8;
-                cursor: default !important;
-              }
-              .super-node-name {
-                color: #fbbf24;
-                font-weight: 600;
-              }
-              .super-node-label {
-                color: #6b7280;
-                font-size: 12px;
-                font-style: italic;
-                margin-left: 8px;
               }
               .graph-explorer-container::-webkit-scrollbar {
                 width: 6px;
@@ -3775,7 +3747,14 @@ const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/' + hash + 
 const init_url = prefix + 'doc/state/example/init.js'
 const args = arguments
 
-fetch(init_url, { cache: 'no-store' }).then(res => res.text()).then(async source => {
+const has_save = location.hash.includes('#save')
+const fetch_opts = has_save ? {} : { cache: 'no-store' }
+
+if (!has_save) {
+  localStorage.clear()
+}
+
+fetch(init_url, fetch_opts).then(res => res.text()).then(async source => {
   const module = { exports: {} }
   const f = new Function('module', 'require', source)
   f(module, require)
@@ -3785,7 +3764,6 @@ fetch(init_url, { cache: 'no-store' }).then(res => res.text()).then(async source
 })
 },{"./page":18}],18:[function(require,module,exports){
 (function (__filename){(function (){
-localStorage.clear()
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
 const { sdb } = statedb(fallback_module)
