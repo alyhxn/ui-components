@@ -2389,10 +2389,6 @@ const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 
-const actions = require('actions')
-const editor = require('quick_editor')
-
-
 module.exports = steps_wizard
 
 async function steps_wizard (opts) {
@@ -2410,7 +2406,6 @@ async function steps_wizard (opts) {
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
   <div class="steps-wizard main">
-    <div class="actions-slot"></div>
     <div class="steps-slot"></div>
   </div>
   <style>
@@ -2418,20 +2413,10 @@ async function steps_wizard (opts) {
   `
 
   const style = shadow.querySelector('style')
-  const main = shadow.querySelector('.main')
-  const actions_slot = shadow.querySelector('.actions-slot')
   const steps_entries = shadow.querySelector('.steps-slot')
-
-
-  main.append(editor(style, inject = inject))
 
   const subs = await sdb.watch(onbatch)
 
-  let actions_el = null
-
-  actions_el = await actions(subs[0])
-  actions_slot.replaceWith(actions_el)
-  
   return el
   
   function render_steps(steps) {
@@ -2502,28 +2487,11 @@ async function steps_wizard (opts) {
 
 function fallback_module () {
   return {
-    api: fallback_instance,
-    _: {
-      'actions': {
-        $: ''
-      },
-      'quick_editor': 0
-    }
+    api: fallback_instance
   }
 
   function fallback_instance () {
     return {
-      _: {
-        'actions': {
-          0: '',
-          mapping: {
-            'style': 'style',
-            'actions': 'actions',
-            'icons': 'icons',
-            'hardcons': 'hardcons'
-          }
-        }
-      },
       drive: {
         'style/': {
           'stepswizard.css': {
@@ -2541,7 +2509,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/steps_wizard/steps_wizard.js")
-},{"STATE":1,"actions":3,"quick_editor":8}],11:[function(require,module,exports){
+},{"STATE":1}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
