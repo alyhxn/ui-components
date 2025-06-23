@@ -6,7 +6,6 @@ const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 
-const editor = require('quick_editor')
 
 module.exports = action_bar
 
@@ -38,7 +37,6 @@ async function action_bar(opts, protocol) {
   const history_icon = shadow.querySelector('.icon-btn')
   const quick_placeholder = shadow.querySelector('quick-actions')
 
-  main.append(editor(style, inject))
 
   let console_icon = {}
   const subs = await sdb.watch(onbatch)
@@ -99,7 +97,6 @@ function fallback_module() {
       'quick_actions': {
         $: ''
       },
-      'quick_editor': 0
     }
   }
   function fallback_instance() {
@@ -178,12 +175,11 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/action_bar/action_bar.js")
-},{"STATE":1,"quick_actions":7,"quick_editor":8}],3:[function(require,module,exports){
+},{"STATE":1,"quick_actions":7}],3:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
-const editor = require('quick_editor')
 module.exports = actions
 
 async function actions(opts, protocol) {
@@ -210,7 +206,6 @@ async function actions(opts, protocol) {
   const main = shadow.querySelector('.main')
   const actions_menu = shadow.querySelector('.actions-menu')
 
-  main.append(editor(style, inject))
   
   let init = false
   let actions = []
@@ -317,9 +312,6 @@ async function actions(opts, protocol) {
 function fallback_module() {
   return {
     api: fallback_instance,
-    _: {
-      'quick_editor': 0
-    }
   }
 
   function fallback_instance() {
@@ -489,12 +481,11 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/actions/actions.js")
-},{"STATE":1,"quick_editor":8}],4:[function(require,module,exports){
+},{"STATE":1}],4:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
-const editor = require('quick_editor')
 module.exports = console_history
 
 async function console_history (opts, protocol) {
@@ -520,7 +511,6 @@ async function console_history (opts, protocol) {
   const main = shadow.querySelector('.main')
   const commands_placeholder = shadow.querySelector('console-commands')
   
-  main.append(editor(style, inject))
   
   let init = false
   let commands = []
@@ -624,10 +614,7 @@ async function console_history (opts, protocol) {
 
 function fallback_module () {
   return {
-    api: fallback_instance,
-    _:{
-      'quick_editor': 0
-    }
+    api: fallback_instance
   }
 
   function fallback_instance () {
@@ -829,7 +816,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/console_history/console_history.js")
-},{"STATE":1,"quick_editor":8}],5:[function(require,module,exports){
+},{"STATE":1}],5:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -842,8 +829,7 @@ async function component (opts, protocol) {
   const { drive } = sdb
   const on = {
     style: inject_style,
-    entries: on_entries,
-    icons: iconject
+    entries: on_entries
   }
 
   const el = document.createElement('div')
@@ -858,7 +844,7 @@ async function component (opts, protocol) {
   /******************************************************************************
   Variables for entries and view management. To get data from the state drive.
   ******************************************************************************/
-  let entries = []
+  let entries = {}
   let view = []
   let view_num = 0
   let expanded_nodes = new Set()
@@ -923,7 +909,7 @@ async function component (opts, protocol) {
       const func = on[type] || fail
       func(data, type)
     }
-    if (!init && entries.length > 0) {
+    if (!init && Object.keys(entries).length > 0) {
       calculate_view_num()
       render_visible_nodes()
       init = true
@@ -937,9 +923,6 @@ async function component (opts, protocol) {
   function on_entries(data) {
     entries = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
   }
-  function iconject(data) {
-    icons = data
-  }
   function inject_style(data) {
     const sheet = new CSSStyleSheet()
     sheet.replaceSync(data)
@@ -950,7 +933,7 @@ async function component (opts, protocol) {
   ******************************************************************************/
   function render_visible_nodes() {
     container.replaceChildren()
-    if (entries.length === 0) return
+    if (Object.keys(entries).length === 0) return
     
     const visible_entries = calculate_visible_entries()
     visible_entries.forEach(entry => {
@@ -963,17 +946,20 @@ async function component (opts, protocol) {
 
   function calculate_visible_entries() {
     const visible_entries = []
-    visible_entries.push(entries[0])
-    let queue = [...entries[0].subs.map(index => entries[index])]
+    const root_entry = entries["/"]
+    if (!root_entry) return visible_entries
+    
+    visible_entries.push(root_entry)
+    let queue = [...root_entry.subs.map(path => entries[path])]
     
     while (queue.length > 0 && visible_entries.length < view_num) {
       const entry = queue.shift()
       if (!entry) continue
       visible_entries.push(entry)
 
-      const entry_path = get_full_path(entry)
+      const entry_path = Object.keys(entries).find(key => entries[key] === entry)
       if (expanded_nodes.has(entry_path) && entry.subs && entry.subs.length > 0) {
-        queue = [...entry.subs.map(index => entries[index]), ...queue]
+        queue = [...entry.subs.map(path => entries[path]), ...queue]
       }
     }
     
@@ -984,21 +970,22 @@ async function component (opts, protocol) {
   ******************************************************************************/
   function create_node(entry) {
     const node = document.createElement('div')
-    const depth = calculate_depth(entry.path)
-    const is_expanded = expanded_nodes.has(get_full_path(entry))
+    const entry_path = Object.keys(entries).find(key => entries[key] === entry)
+    const depth = calculate_depth(entry_path)
+    const is_expanded = expanded_nodes.has(entry_path)
     const has_children = entry.subs && entry.subs.length > 0
     
-    let icon = get_icon_for_type(entry.type)
+    let icon_class = get_icon_class_for_type(entry.type)
     let prefix = create_tree_prefix(entry, depth, is_expanded, has_children)
     
     node.className = 'explorer-node'
-    node.dataset.path = get_full_path(entry)
-    node.dataset.index = entries.indexOf(entry)
+    node.dataset.path = entry_path
+    node.dataset.index = entry_path
     node.style.paddingLeft = `${depth * 10}px`
     
     node.innerHTML = `
       <span class="tree-prefix">${prefix}</span>
-      <span class="node-icon">${icon}</span>
+      <span class="node-icon ${icon_class}"></span>
       <span class="node-name">${entry.name}</span>
     `
     
@@ -1017,7 +1004,7 @@ async function component (opts, protocol) {
 
   // Toggle node expansion state
   function toggle_node(entry) {
-    const path = get_full_path(entry)
+    const path = Object.keys(entries).find(key => entries[key] === entry)
     
     if (expanded_nodes.has(path)) {
       expanded_nodes.delete(path)
@@ -1029,19 +1016,19 @@ async function component (opts, protocol) {
     // console.log('view:', view_num)
   }
 
-  // Get appropriate icon for entry type
-  function get_icon_for_type(type) {
-    const type_icons = {
-      'root': '🌐',
-      'folder': '📁',
-      'file': '📄',
-      'html-file': '📄',
-      'js-file': '📄',
-      'css-file': '🖌️',
-      'json-file': '🎨'
+  // Get appropriate CSS class for entry type
+  function get_icon_class_for_type(type) {
+    const type_classes = {
+      'root': 'icon-root',
+      'folder': 'icon-folder',
+      'file': 'icon-file',
+      'html-file': 'icon-html-file',
+      'js-file': 'icon-js-file',
+      'css-file': 'icon-css-file',
+      'json-file': 'icon-json-file'
     }
     
-    return type_icons[type] || '📄'
+    return type_classes[type] || 'icon-file'
   }
   /******************************************************************************
    Prefix creation for tree structure.
@@ -1058,10 +1045,7 @@ async function component (opts, protocol) {
 
   function calculate_depth(path) {
     if (!path) return 0
-    return (path.match(/\//g) || []).length
-  }
-  function get_full_path(entry) {
-    return entry.path + entry.name + '/'
+    return (path.match(/\//g) || []).length - 1
   }
 }
 
@@ -1113,6 +1097,34 @@ function fallback_module() {
                 cursor: pointer;
               }
               
+              .node-icon::before {
+                font-style: normal;
+              }
+              
+              .icon-root::before {
+                content: "🌐";
+              }
+              
+              .icon-folder::before {
+                content: "📁";
+              }
+              
+              .icon-file::before {
+                content: "📄";
+              }
+              
+              .icon-html-file::before {
+                content: "📄";
+              }             
+              .icon-js-file::before {
+                content: "📄";
+              }              
+              .icon-css-file::before {
+                content: "🖌️";
+              }              
+              .icon-json-file::before {
+                content: "🎨";
+              }              
               .node-name {
                 overflow: hidden;
                 text-overflow: ellipsis;
@@ -1123,19 +1135,6 @@ function fallback_module() {
         'entries/': {
           'graph.json': {
             '$ref': 'entries.json'
-          }
-        },
-        'icons/': {
-          'folder_icons.json': {
-            raw: `{
-              "root": "🌐",
-              "folder": "📁",
-              "file": "📄",
-              "html-file": "📄",
-              "js-file": "📄",
-              "css-file": "🖌️",
-              "json-file": "🎨"
-            }`
           }
         }
       }
@@ -1149,7 +1148,6 @@ function fallback_module() {
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
-const editor = require('quick_editor')
 
 module.exports = create_component_menu
 async function create_component_menu (opts, names, inicheck, callbacks) {
@@ -1193,7 +1191,6 @@ async function create_component_menu (opts, names, inicheck, callbacks) {
   const unselect_btn = shadow.querySelector('.unselect-all-button')
   const list = shadow.querySelector('.menu-list')
 
-  main.append(editor(style, inject))
 
   names.forEach((name, index) => {
     const is_checked = all_checked || checkobject[index] === true
@@ -1255,15 +1252,12 @@ async function create_component_menu (opts, names, inicheck, callbacks) {
   function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
 
   function inject (data) {
-    style.innerHTML = data.join('\n')
+    style.textContent = data.join('\n')
   }
 }
 function fallback_module () {
   return {
     api: fallback_instance,
-    _: {
-      'quick_editor': 0
-    }
   }
   function fallback_instance () {
     return {
@@ -1404,12 +1398,11 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/menu.js")
-},{"STATE":1,"quick_editor":8}],7:[function(require,module,exports){
+},{"STATE":1}],7:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
-const editor = require('quick_editor')
 module.exports = quick_actions
 
 async function quick_actions(opts, protocol) {
@@ -1454,7 +1447,6 @@ async function quick_actions(opts, protocol) {
   const style = shadow.querySelector('style')
   const main = shadow.querySelector('.main')
 
-  main.append(editor(style, inject))
   
   let init = false
   let icons = {}
@@ -1587,10 +1579,7 @@ async function quick_actions(opts, protocol) {
 
 function fallback_module() {
   return {
-    api: fallback_instance,
-    _:{
-      'quick_editor': 0
-    }
+    api: fallback_instance
   }
 
   function fallback_instance() {
@@ -1788,160 +1777,289 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/quick_actions/quick_actions.js")
-},{"STATE":1,"quick_editor":8}],8:[function(require,module,exports){
-module.exports = editor
-let count = 0
-let first = true
-const els = []
-const els_data = []
+},{"STATE":1}],8:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { get } = statedb(fallback_module)
 
-function toggle () {
-  els.forEach((el, i) => {
-    if(el.innerHTML){
-      els_data[i].text = el.querySelector('textarea').value
-      el.replaceChildren('')
-    }
-    else
-      el.replaceChildren(...init(els_data[i], el).children)
-  })
-}
-function editor (style, inject, drive) {
-  if(first){
-      first = false
-      return toggle
+module.exports = quick_editor
+
+async function quick_editor (opts) {
+  // ----------------------------------------
+  let init
+  let data
+  const current_data = {}
+
+  const { sdb, io, net } = await get(opts.sid)
+  const { drive } = sdb
+
+  const on = {
+    style: inject
   }
+  // ----------------------------------------
   const el = document.createElement('div')
   el.classList.add('quick-editor')
-  els.push(el)
-  els_data.push({style, inject, drive})
-  return el
-}
+  const shadow = el.attachShadow({mode: 'closed'})
 
-function init ({ style, inject, drive, text }, el) {
-  
-  el.innerHTML = `
+  shadow.innerHTML = `
       <button class="dots-button">⋮</button>
-      <div class="quick-menu hidden">
-        <textarea placeholder="Type here..."></textarea>
-        <button class="apply-button">Apply</button>
+      <div class="quick-box">
+        <div class="quick-menu hidden">
+          <!-- Top Tabs -->
+          <div class="top-btns">
+          </div>
+          <div class="top-tabs">
+          </div>
+          <button class="apply-button">Apply</button>
+        </div>
       </div>
-    
-    <style>
-      .main {
-        position: relative;
-        overflow: visible;
-      }
-      .main:hover {
-        margin-right: 20px;
-      }
-      .main:hover::before {
-        content: '';
-        position: absolute;
-        width: 100%;
-        height: 100%;
-        top: 0;
-        left: 0;
-        border: 4px solid skyblue;
-        pointer-events: none;
-        z-index: 4;
-      }
-      .main:hover .quick-editor {
-        display: block;
-      }
-      .quick-editor {
-        display: none;
-        position: absolute;
-        top: -5px;
-        right: -10px;
-        z-index: 5;
-      }
+      <style>
+      </style>
+      `
 
-      .quick-editor .dots-button {
-        border: none;
-        font-size: 24px;
-        cursor: pointer;
-        line-height: 1;
-        background-color: white;
-        letter-spacing: 1px;
-        padding: 3px 5px;
-        border-radius: 20%;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-      }
+  const style = shadow.querySelector('style')
+  const menu_btn = shadow.querySelector('.dots-button')
+  const menu = shadow.querySelector('.quick-menu')
+  const textarea = shadow.querySelector('textarea')
+  const apply_btn = shadow.querySelector('.apply-button')
+  const top_btns = shadow.querySelector('.top-btns')
+  const top_tabs = shadow.querySelector('.top-tabs')
+  // ----------------------------------------
+  // EVENTS
+  // ----------------------------------------
+  await sdb.watch(onbatch)
+  menu_btn.onclick = menu_click
+  apply_btn.onclick = apply
 
-      .quick-editor .quick-menu {
-        position: absolute;
-        top: 100%;
-        left: 0;
-        background: white;
-        padding: 8px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-        white-space: nowrap;
-        z-index: 10;
-      }
-
-      .quick-editor .quick-menu textarea {
-        width: 300px;
-        height: 400px;
-        resize: vertical;
-      }
-
-      .quick-editor .hidden {
-        display: none;
-      }
-      .quick-editor .apply-button {
-        display: block;
-        margin-top: 10px;
-        padding: 5px 10px;
-        background-color: #4CAF50;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-      }
-    </style>
-  `
-  const btn = el.querySelector('.dots-button')
-  const menu = el.querySelector('.quick-menu')
-  const textarea = el.querySelector('textarea')
-  const applyBtn = el.querySelector('.apply-button')
-
-  btn.addEventListener('click', (e) => {
-    menu.classList.toggle('hidden')
-    textarea.value = text || style.innerHTML
-    // Auto reposition to avoid overflow
-    const rect = menu.getBoundingClientRect()
-    const overflowRight = rect.right > window.innerWidth
-    const overflowLeft = rect.left < 0
-
-    if (overflowRight) {
-      menu.style.left = 'auto'
-      menu.style.right = '0'
-    } else if (overflowLeft) {
-      menu.style.left = '0'
-      menu.style.right = 'auto'
-    } else {
-      menu.style.left = '0'
-      menu.style.right = 'auto'
+  io.on(port => {
+    const { by, to } = port
+    port.onmessage = event => {
+      const txt = event.data
+      const key = `[${by} -> ${to}]`
+      data = txt
     }
   })
-
-  applyBtn.addEventListener('click', apply)
-
-  textarea.addEventListener('keydown', function(e) {
-    if (e.ctrlKey && e.key === 'Enter') {
-      apply()
-    }
-  })
-
+  const port = await io.at(net.page.id)
+  
   return el
+
+  // ----------------------------------------
+  // FUNCTIONS
+  // ----------------------------------------
+  function make_btn (name, classes) {
+    const btn = document.createElement('button')
+    btn.textContent = name
+    btn.classList.add(...classes.split(' '))
+    btn.setAttribute('tab', name)
+    return btn
+  }
+  function make_tab (id, classes) {
+    const tab = document.createElement('div')
+    tab.classList.add(...classes.split(' '))
+    tab.id = id.replaceAll('.', '')
+    tab.innerHTML = `
+      <div class="sub-btns">
+      </div>
+      <div class="subtab-content">
+      </div>
+    `
+    return tab
+  }
+  function make_textarea (id, classes, value) {
+    const textarea = document.createElement('textarea')
+    textarea.id = id.replaceAll('.', '')
+    textarea.classList.add(...classes.split(' '))
+    textarea.value = value
+    textarea.placeholder = 'Type here...'
+    return textarea
+  }
+  async function menu_click () {
+    menu.classList.toggle('hidden')
+    if(init)
+      return
+    init = true
+    Object.entries(data).forEach(([dataset, files], i) => {
+      let first = ''
+      if(!i){
+        first = ' active'
+        current_data.dataset = dataset
+      }
+      const no_slash = dataset.split('/')[0]
+      const btn = make_btn(no_slash, `tab-button${first}`)
+      const tab = make_tab(no_slash, `tab-content${first}`)
+
+      btn.onclick = () => tab_btn_click(btn, top_btns, top_tabs, '.tab-content', 'dataset', dataset)
+      
+      top_btns.append(btn)
+      top_tabs.append(tab)
+
+      const sub_btns = tab.querySelector('.sub-btns')
+      const subtab = tab.querySelector('.subtab-content')
+      Object.entries(files).forEach(([file, raw], j) => {
+        let first = ''
+        if(!j){
+          first = ' active'
+          current_data.file = file
+        }
+        const sub_btn = make_btn(file, `sub-btn${first}`)
+        const textarea = make_textarea(file, `subtab-textarea${first}`, raw)
+
+        sub_btn.onclick = () => tab_btn_click(sub_btn, sub_btns, subtab, '.subtab-textarea', 'file', file)
+
+        sub_btns.append(sub_btn)
+        subtab.append(textarea)
+      })
+    })
+  }
+  function tab_btn_click (btn, btns, tabs, tab_class, key, name) {
+    btns.querySelector('.active').classList.remove('active')
+    tabs.querySelector(tab_class+'.active').classList.remove('active')
+
+    btn.classList.add('active')
+    tabs.querySelector('#'+btn.getAttribute('tab').replaceAll('.', '')).classList.add('active')
+    current_data[key] = name
+
+  }
 
   function apply() {
-    if (style && textarea) {
-      inject([textarea.value])
+    port.postMessage({ type: 'put', args: [
+      current_data.dataset + current_data.file,
+      shadow.querySelector('.tab-content.active textarea.active').value
+    ]})
+  }
+  
+  function inject (data) {
+    style.textContent = data.join('\n')
+  }
+  async function onbatch(batch) {
+    for (const { type, paths } of batch){
+      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      const func = on[type] || fail
+      func(data, type)
+    }
+  }
+
+  function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+
+}
+
+
+function fallback_module(){
+  return {
+    api: fallback_instance
+  }
+  function fallback_instance(){
+    return {
+      drive: {
+        'style/': {
+          'quick_editor.css': {
+            raw: `
+            .dots-button {
+              border: none;
+              font-size: 24px;
+              cursor: pointer;
+              line-height: 1;
+              background-color: white;
+              letter-spacing: 1px;
+              padding: 3px 5px;
+              border-radius: 20%;
+              box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            }
+
+            .quick-menu {
+              position: absolute;
+              top: 100%;
+              right: 0;
+              background: white;
+              padding: 8px;
+              box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+              white-space: nowrap;
+              z-index: 10;
+              width: 400px;
+            }
+
+            .hidden {
+              display: none;
+            }
+
+            .top-btns {
+              display: flex;
+              margin-bottom: 8px;
+            }
+
+            .tab-button {
+              flex: 1;
+              padding: 6px 10px;
+              background: #eee;
+              border: none;
+              cursor: pointer;
+              border-bottom: 2px solid transparent;
+            }
+            .tab-button.active {
+              background: white;
+              border-bottom: 2px solid #4CAF50;
+            }
+            .tab-content {
+              display: none;
+            }
+            .tab-content.active {
+              display: block;
+            }
+
+            .sub-btns {
+              float: right;
+              display: flex;
+              flex-direction: column;
+              gap: 4px;
+              margin-left: 5px;
+            }
+
+            .sub-btn {
+              padding: 4px 8px;
+              background: #f1f1f1;
+              border: none;
+              cursor: pointer;
+              text-align: right;
+            }
+            .sub-btn.active {
+              background: #d0f0d0;
+            }
+
+            .subtab-content {
+              overflow: hidden;
+            }
+
+            .subtab-textarea {
+              width: 300px;
+              height: 400px;
+              display: none;
+              resize: vertical;
+            }
+            .subtab-textarea.active {
+              display: block;
+            }
+
+            .apply-button {
+              display: block;
+              margin-top: 10px;
+              padding: 5px 10px;
+              background-color: #4CAF50;
+              color: white;
+              border: none;
+              border-radius: 4px;
+              cursor: pointer;
+            }
+
+            `
+          }
+        }
+      }
     }
   }
 }
-},{}],9:[function(require,module,exports){
+}).call(this)}).call(this,"/src/node_modules/quick_editor.js")
+},{"STATE":1}],9:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1951,7 +2069,6 @@ const console_history = require('console_history')
 const actions = require('actions')
 const tabbed_editor = require('tabbed_editor')
 const graph_explorer = require('graph_explorer')
-const editor = require('quick_editor')
 
 module.exports = component
 
@@ -1980,7 +2097,6 @@ async function component (opts, protocol) {
   const tabbed_editor_placeholder = shadow.querySelector('tabbed-editor-placeholder')
   const console_placeholder = shadow.querySelector('console-history-placeholder')
 
-  main.append(editor(style, inject))
   
   let console_history_el = null
   let actions_el = null
@@ -2173,8 +2289,7 @@ function fallback_module () {
       },
       'graph_explorer': {
         $: ''
-      },
-      'quick_editor': 0
+      }
     }
   }
 
@@ -2212,8 +2327,7 @@ function fallback_module () {
           0: '',
           mapping: {
             'style': 'style',
-            'entries': 'entries',
-            'icons': 'icons'
+            'entries': 'entries'
           }
         }
       },
@@ -2275,14 +2389,13 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/space.js")
-},{"STATE":1,"actions":3,"console_history":4,"graph_explorer":5,"quick_editor":8,"tabbed_editor":11}],10:[function(require,module,exports){
+},{"STATE":1,"actions":3,"console_history":4,"graph_explorer":5,"tabbed_editor":11}],10:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 
 const actions = require('actions')
-const editor = require('quick_editor')
 
 
 module.exports = steps_wizard
@@ -2308,7 +2421,6 @@ async function steps_wizard (opts) {
   const main = shadow.querySelector('.main')
   const actions_slot = shadow.querySelector('.actions-slot')
 
-  main.append(editor(style, inject = inject))
 
   const subs = await sdb.watch(onbatch)
 
@@ -2341,7 +2453,6 @@ function fallback_module () {
       'actions': {
         $: ''
       },
-      'quick_editor': 0
     }
   }
 
@@ -2381,12 +2492,11 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/steps_wizard/steps_wizard.js")
-},{"STATE":1,"actions":3,"quick_editor":8}],11:[function(require,module,exports){
+},{"STATE":1,"actions":3}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
-const editor = require('quick_editor')
 module.exports = tabbed_editor
 
 async function tabbed_editor(opts, protocol) {
@@ -2414,7 +2524,6 @@ async function tabbed_editor(opts, protocol) {
   const main = shadow.querySelector('.main')
   const editor_content = shadow.querySelector('.editor-content')
 
-  main.append(editor(style, inject))
   
   let init = false
   let files = {}
@@ -2588,10 +2697,7 @@ async function tabbed_editor(opts, protocol) {
 
 function fallback_module() {
   return {
-    api: fallback_instance,
-    _: {
-      'quick_editor': 0
-    }
+    api: fallback_instance
   }
 
   function fallback_instance() {
@@ -2780,12 +2886,11 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor/tabbed_editor.js")
-},{"STATE":1,"quick_editor":8}],12:[function(require,module,exports){
+},{"STATE":1}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
-const editor = require('quick_editor')
 module.exports = component
 
 async function component (opts, protocol) {
@@ -2807,7 +2912,6 @@ async function component (opts, protocol) {
   const style = shadow.querySelector('style')
   const main = shadow.querySelector('.main')
 
-  main.append(editor(style, inject))
   
   let init = false
   let variables = []
@@ -2955,9 +3059,6 @@ async function component (opts, protocol) {
 function fallback_module () {
   return {
     api: fallback_instance,
-    _:{
-      'quick_editor': 0
-    }
   }
   function fallback_instance () {
     return {
@@ -2997,7 +3098,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/tabs.js")
-},{"STATE":1,"quick_editor":8}],13:[function(require,module,exports){
+},{"STATE":1}],13:[function(require,module,exports){
 (function (__filename){(function (){
 const state = require('STATE')
 const state_db = state(__filename)
@@ -3005,7 +3106,6 @@ const { sdb, get } = state_db(fallback_module)
 
 const tabs_component = require('tabs')
 const task_manager = require('task_manager')
-const editor = require('quick_editor')
 
 module.exports = tabsbar
 
@@ -3042,7 +3142,6 @@ async function tabsbar (opts, protocol) {
   const hat_btn = shadow.querySelector('.hat-btn')
   const bar_btn = shadow.querySelector('.bar-btn')
 
-  main.append(editor(style, inject))
   const subs = await sdb.watch(onbatch)
   if (dricons[0]) {
     const parser = new DOMParser()
@@ -3111,7 +3210,6 @@ function fallback_module () {
       task_manager: {
         $: ''
       },
-      'quick_editor': 0
     }
   }
 
@@ -3183,12 +3281,11 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/tabsbar/tabsbar.js")
-},{"STATE":1,"quick_editor":8,"tabs":12,"task_manager":14}],14:[function(require,module,exports){
+},{"STATE":1,"tabs":12,"task_manager":14}],14:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
-const editor = require('quick_editor')
 module.exports = task_manager
 
 async function task_manager (opts, callback = () => console.log('task manager clicked')) {
@@ -3213,7 +3310,6 @@ async function task_manager (opts, callback = () => console.log('task manager cl
   const main = shadow.querySelector('.main')
   const btn = shadow.querySelector('.task-count-btn')
 
-  main.append(editor(style, inject))
   
   btn.onclick = callback
 
@@ -3242,9 +3338,6 @@ async function task_manager (opts, callback = () => console.log('task manager cl
 function fallback_module () {
   return {
     api: fallback_instance,
-    _: {
-      'quick_editor': 0
-    }
   }
 
   function fallback_instance () {
@@ -3281,12 +3374,11 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager.js")
-},{"STATE":1,"quick_editor":8}],15:[function(require,module,exports){
+},{"STATE":1}],15:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
-const editor = require('quick_editor')
 const action_bar = require('action_bar')
 const tabsbar = require('tabsbar')
 
@@ -3314,7 +3406,6 @@ async function taskbar(opts, protocol) {
   const action_bar_slot = shadow.querySelector('.action-bar-slot')
   const tabsbar_slot = shadow.querySelector('.tabsbar-slot')
 
-  main.append(editor(style, inject))
   
   const subs = await sdb.watch(onbatch)
   let send = null
@@ -3390,7 +3481,6 @@ function fallback_module() {
       'tabsbar': {
         $: ''
       },
-      'quick_editor': 0
     }
   }
 
@@ -3442,7 +3532,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/taskbar.js")
-},{"STATE":1,"action_bar":2,"quick_editor":8,"tabsbar":13}],16:[function(require,module,exports){
+},{"STATE":1,"action_bar":2,"tabsbar":13}],16:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3450,7 +3540,6 @@ const { sdb, get } = statedb(fallback_module)
 
 const space = require('space')
 const taskbar = require('taskbar')
-const editor = require('quick_editor')
 
 module.exports = theme_widget
 
@@ -3477,7 +3566,6 @@ async function theme_widget (opts) {
   const space_slot = shadow.querySelector('.space-slot')
   const taskbar_slot = shadow.querySelector('.taskbar-slot')
 
-  main.append(editor(style, inject = inject))
 
   const subs = await sdb.watch(onbatch)
   
@@ -3538,7 +3626,6 @@ function fallback_module () {
       'taskbar': {
         $: ''
       },
-      'quick_editor': 0
     }
   }
 
@@ -3581,10 +3668,9 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/theme_widget.js")
-},{"STATE":1,"quick_editor":8,"space":9,"taskbar":15}],17:[function(require,module,exports){
-const hash = 'dd5a8a33c1ca1228ed3f4284b3067f36a0d2873e'
-const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/' + hash + '/'
-const init_url = prefix + 'doc/state/example/init.js'
+},{"STATE":1,"space":9,"taskbar":15}],17:[function(require,module,exports){
+const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/main/'
+const init_url = location.hash === '#dev' ? 'web/init.js' : prefix + 'src/node_modules/init.js'
 const args = arguments
 
 const has_save = location.hash.includes('#save')
@@ -3600,14 +3686,15 @@ fetch(init_url, fetch_opts).then(res => res.text()).then(async source => {
   f(module, require)
   const init = module.exports
   await init(args, prefix)
-  require('./page')
+  require('./page') // or whatever is otherwise the main entry of our project
 })
+
 },{"./page":18}],18:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
-const { sdb } = statedb(fallback_module)
-const {drive} = sdb
+const { sdb, io } = statedb(fallback_module)
+const { drive, admin } = sdb
 /******************************************************************************
   PAGE
 ******************************************************************************/
@@ -3670,7 +3757,8 @@ async function boot (opts) {
   // ID + JSON STATE
   // ----------------------------------------
   const on = {
-    style: inject
+    style: inject,
+    ...sdb.admin.status.dataset.drive
   }
   // const status = {}
   // ----------------------------------------
@@ -3679,10 +3767,6 @@ async function boot (opts) {
   const el = document.body
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
-  <label class="toggle-switch">
-    <input type="checkbox">
-    <span class="slider"></span>
-  </label>
   <div class="navbar-slot"></div>
   <div class="components-wrapper-container">
     <div class="components-wrapper"></div>
@@ -3691,9 +3775,7 @@ async function boot (opts) {
   </style>`
   el.style.margin = 0
   el.style.backgroundColor = '#d8dee9'
-  const editor_btn = shadow.querySelector('input')
-  const toggle = editor()
-  editor_btn.onclick = toggle
+
 
   // ----------------------------------------
   // ELEMENTS
@@ -3705,6 +3787,7 @@ async function boot (opts) {
 
   const entries = Object.entries(imports)
   const wrappers = []
+  const pairs = {}
   const names = entries.map(([name]) => name)
   let current_selected_wrapper = null
 
@@ -3731,12 +3814,26 @@ async function boot (opts) {
     on_label_click: handle_label_click,
     on_select_all_toggle: handle_select_all_toggle
   }
+  io.on(port => {
+    const { by, to } = port
+    port.onmessage = event => {
+      const txt = event.data
+      const key = `[${by} -> ${to}]`
+      on[txt.type] && on[txt.type](...txt.args, pairs[to])
+
+    }
+  })
+  
+
+  const editor_subs = await sdb.get_sub("page>../src/node_modules/quick_editor")
   const subs = (await sdb.watch(onbatch)).filter((_, index) => index % 2 === 0)
-  console.log('subs', subs)
+  console.log('Page subs', subs)
   const nav_menu_element = await navbar(subs[names.length], names, initial_checked_indices, menu_callbacks)
   navbar_slot.replaceWith(nav_menu_element)
   create_component(entries)
   window.onload = scroll_to_initial_selected
+
+  
   return el
 async function create_component (entries_obj) {
   let index = 0
@@ -3753,7 +3850,30 @@ async function create_component (entries_obj) {
     const component_content = await factory(subs[index])
     console.log('component_content', index)
     component_content.className = 'component-content'
-    inner.append(component_content)
+    
+    const node_id = admin.status.s2i[subs[index].sid]
+    const editor_id = admin.status.a2i[admin.status.s2i[editor_subs[index].sid]]
+    inner.append(component_content, await editor(editor_subs[index]))
+    
+
+    const result = {}
+    const drive = admin.status.dataset.drive
+
+    pairs[editor_id] = node_id
+    
+    const datasets = drive.list('', node_id)
+    for(dataset of datasets) {
+      result[dataset] = {}
+      const files = drive.list(dataset, node_id)
+      for(file of files){
+        result[dataset][file] = (await drive.get(dataset+file, node_id)).raw
+      }
+    }
+    
+
+    const port = await io.at(editor_id)
+    port.postMessage(result)
+
     components_wrapper.appendChild(outer)
     wrappers[index] = { outer, inner, name, checkbox_state: is_initially_checked }
     index++
@@ -3951,8 +4071,7 @@ function fallback_module () {
     0: '',
     mapping: {
       'style': 'style',
-      'entries': 'entries',
-      'icons': 'icons'
+      'entries': 'entries'
     }
   }
   subs[menuname] = { 
@@ -3962,7 +4081,16 @@ function fallback_module () {
       'style': 'style',
     }
   }
-  subs['../src/node_modules/quick_editor'] = 0
+  subs['../src/node_modules/quick_editor'] = {
+    $: '',
+    mapping: {
+      'style': 'style'
+    }
+  }
+  for(i = 0; i < Object.keys(subs).length - 2; i++){
+    subs['../src/node_modules/quick_editor'][i] = quick_editor$
+  }
+  
   return {
     _: subs,
     drive: {
@@ -4047,10 +4175,41 @@ function fallback_module () {
         input:checked + .slider::before {
           transform: translateX(24px);
         }
-        `
+        .component-wrapper {
+        position: relative;
+        overflow: visible;
+      }
+      .component-wrapper:hover::before {
+        content: '';
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        top: 0;
+        left: 0;
+        border: 4px solid skyblue;
+        pointer-events: none;
+        z-index: 4;
+      }
+      .component-wrapper:hover .quick-editor {
+        display: block;
+      }
+      .quick-editor {
+        display: none;
+        position: absolute;
+        top: -5px;
+        right: -10px;
+        z-index: 5;
+      }`
         }
       }
     }
+  }
+  function quick_editor$ (args, tools, [quick_editor]){
+    const state = quick_editor()
+    state.net = {
+      page: {}
+    }
+    return state
   }
   function subgen (name) {
     subs[name] = {

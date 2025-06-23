@@ -378,8 +378,7 @@ function fallback_module () {
     0: '',
     mapping: {
       'style': 'style',
-      'entries': 'entries',
-      'icons': 'icons'
+      'entries': 'entries'
     }
   }
   subs[menuname] = { 
