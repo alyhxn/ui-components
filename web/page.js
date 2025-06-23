@@ -145,6 +145,7 @@ async function create_component (entries_obj) {
     `
     const inner = outer.querySelector('.component-wrapper')
     const component_content = await factory(subs[index])
+    console.log('component_content', index)
     component_content.className = 'component-content'
     inner.append(component_content)
     components_wrapper.appendChild(outer)
@@ -352,7 +353,7 @@ function fallback_module () {
     0: '',
     mapping: {
       'style': 'style',
-      'graph_data': 'graph_data',
+      'entries': 'entries',
       'icons': 'icons'
     }
   }
