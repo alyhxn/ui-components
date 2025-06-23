@@ -1,8 +1,7 @@
-localStorage.clear()
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
-const { sdb } = statedb(fallback_module)
-const {drive, admin} = sdb
+const { sdb, io } = statedb(fallback_module)
+const { drive, admin } = sdb
 /******************************************************************************
   PAGE
 ******************************************************************************/
@@ -65,7 +64,8 @@ async function boot (opts) {
   // ID + JSON STATE
   // ----------------------------------------
   const on = {
-    style: inject
+    style: inject,
+    ...sdb.admin.status.dataset.drive
   }
   // const status = {}
   // ----------------------------------------
@@ -94,6 +94,7 @@ async function boot (opts) {
 
   const entries = Object.entries(imports)
   const wrappers = []
+  const pairs = {}
   const names = entries.map(([name]) => name)
   let current_selected_wrapper = null
 
@@ -120,12 +121,26 @@ async function boot (opts) {
     on_label_click: handle_label_click,
     on_select_all_toggle: handle_select_all_toggle
   }
+  io.on(port => {
+    const { by, to } = port
+    port.onmessage = event => {
+      const txt = event.data
+      const key = `[${by} -> ${to}]`
+      on[txt.type] && on[txt.type](...txt.args, pairs[to])
+
+    }
+  })
+  
+
+  const editor_subs = await sdb.get_sub("page>../src/node_modules/quick_editor")
   const subs = (await sdb.watch(onbatch)).filter((_, index) => index % 2 === 0)
-  console.log('subs', subs)
+  console.log('Page subs', subs)
   const nav_menu_element = await navbar(subs[names.length], names, initial_checked_indices, menu_callbacks)
   navbar_slot.replaceWith(nav_menu_element)
   create_component(entries)
   window.onload = scroll_to_initial_selected
+
+  
   return el
 async function create_component (entries_obj) {
   let index = 0
@@ -143,7 +158,28 @@ async function create_component (entries_obj) {
     component_content.className = 'component-content'
     
     const node_id = admin.status.s2i[subs[index].sid]
-    inner.append(component_content, editor(node_id, admin.status.dataset))
+    const editor_id = admin.status.a2i[admin.status.s2i[editor_subs[index].sid]]
+    inner.append(component_content, await editor(editor_subs[index]))
+    
+
+    const result = {}
+    const drive = admin.status.dataset.drive
+
+    pairs[editor_id] = node_id
+    
+    const datasets = drive.list('', node_id)
+    for(dataset of datasets) {
+      result[dataset] = {}
+      const files = drive.list(dataset, node_id)
+      for(file of files){
+        result[dataset][file] = (await drive.get(dataset+file, node_id)).raw
+      }
+    }
+    
+
+    const port = await io.at(editor_id)
+    port.postMessage(result)
+
     components_wrapper.appendChild(outer)
     wrappers[index] = { outer, inner, name, checkbox_state: is_initially_checked }
     index++
@@ -352,7 +388,16 @@ function fallback_module () {
       'style': 'style',
     }
   }
-  subs['../src/node_modules/quick_editor'] = 0
+  subs['../src/node_modules/quick_editor'] = {
+    $: '',
+    mapping: {
+      'style': 'style'
+    }
+  }
+  for(i = 0; i < Object.keys(subs).length - 2; i++){
+    subs['../src/node_modules/quick_editor'][i] = quick_editor$
+  }
+  
   return {
     _: subs,
     drive: {
@@ -461,108 +506,17 @@ function fallback_module () {
         top: -5px;
         right: -10px;
         z-index: 5;
-      }
-
-      .quick-editor .dots-button {
-        border: none;
-        font-size: 24px;
-        cursor: pointer;
-        line-height: 1;
-        background-color: white;
-        letter-spacing: 1px;
-        padding: 3px 5px;
-        border-radius: 20%;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-      }
-
-      .quick-editor .quick-menu {
-        position: absolute;
-        top: 100%;
-        right: 0;
-        background: white;
-        padding: 8px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-        white-space: nowrap;
-        z-index: 10;
-        width: 400px;
-      }
-
-      .quick-editor .hidden {
-        display: none;
-      }
-
-      .top-btns {
-        display: flex;
-        margin-bottom: 8px;
-      }
-
-      .tab-button {
-        flex: 1;
-        padding: 6px 10px;
-        background: #eee;
-        border: none;
-        cursor: pointer;
-        border-bottom: 2px solid transparent;
-      }
-      .tab-button.active {
-        background: white;
-        border-bottom: 2px solid #4CAF50;
-      }
-      .tab-content {
-        display: none;
-      }
-      .tab-content.active {
-        display: block;
-      }
-
-      .sub-btns {
-        float: right;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        margin-left: 5px;
-      }
-
-      .sub-btn {
-        padding: 4px 8px;
-        background: #f1f1f1;
-        border: none;
-        cursor: pointer;
-        text-align: right;
-      }
-      .sub-btn.active {
-        background: #d0f0d0;
-      }
-
-      .subtab-content {
-        overflow: hidden;
-      }
-
-      .subtab-textarea {
-        width: 300px;
-        height: 400px;
-        display: none;
-        resize: vertical;
-      }
-      .subtab-textarea.active {
-        display: block;
-      }
-
-      .quick-editor .apply-button {
-        display: block;
-        margin-top: 10px;
-        padding: 5px 10px;
-        background-color: #4CAF50;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-      }
-
-        `
+      }`
         }
       }
     }
+  }
+  function quick_editor$ (args, tools, [quick_editor]){
+    const state = quick_editor()
+    state.net = {
+      page: {}
+    }
+    return state
   }
   function subgen (name) {
     subs[name] = {

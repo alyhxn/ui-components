@@ -1,6 +1,6 @@
 const default_prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/refs/heads/main/'
 const USE_LOCAL = location.hash === '#dev'
-const CACHE_MODULES = ['io', 'quick_editor', 'STATE']
+const CACHE_MODULES = ['io', 'STATE']
 
 module.exports = init
 async function init (args, prefix = default_prefix) {
