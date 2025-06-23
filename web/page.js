@@ -1,7 +1,7 @@
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
-const { sdb } = statedb(fallback_module)
-const {drive} = sdb
+const { sdb, io } = statedb(fallback_module)
+const { drive, admin } = sdb
 /******************************************************************************
   PAGE
 ******************************************************************************/
@@ -64,7 +64,8 @@ async function boot (opts) {
   // ID + JSON STATE
   // ----------------------------------------
   const on = {
-    style: inject
+    style: inject,
+    ...sdb.admin.status.dataset.drive
   }
   // const status = {}
   // ----------------------------------------
@@ -73,10 +74,6 @@ async function boot (opts) {
   const el = document.body
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
-  <label class="toggle-switch">
-    <input type="checkbox">
-    <span class="slider"></span>
-  </label>
   <div class="navbar-slot"></div>
   <div class="components-wrapper-container">
     <div class="components-wrapper"></div>
@@ -85,9 +82,7 @@ async function boot (opts) {
   </style>`
   el.style.margin = 0
   el.style.backgroundColor = '#d8dee9'
-  const editor_btn = shadow.querySelector('input')
-  const toggle = editor()
-  editor_btn.onclick = toggle
+
 
   // ----------------------------------------
   // ELEMENTS
@@ -99,6 +94,7 @@ async function boot (opts) {
 
   const entries = Object.entries(imports)
   const wrappers = []
+  const pairs = {}
   const names = entries.map(([name]) => name)
   let current_selected_wrapper = null
 
@@ -125,12 +121,26 @@ async function boot (opts) {
     on_label_click: handle_label_click,
     on_select_all_toggle: handle_select_all_toggle
   }
+  io.on(port => {
+    const { by, to } = port
+    port.onmessage = event => {
+      const txt = event.data
+      const key = `[${by} -> ${to}]`
+      on[txt.type] && on[txt.type](...txt.args, pairs[to])
+
+    }
+  })
+  
+
+  const editor_subs = await sdb.get_sub("page>../src/node_modules/quick_editor")
   const subs = (await sdb.watch(onbatch)).filter((_, index) => index % 2 === 0)
-  console.log('subs', subs)
+  console.log('Page subs', subs)
   const nav_menu_element = await navbar(subs[names.length], names, initial_checked_indices, menu_callbacks)
   navbar_slot.replaceWith(nav_menu_element)
   create_component(entries)
   window.onload = scroll_to_initial_selected
+
+  
   return el
 async function create_component (entries_obj) {
   let index = 0
@@ -147,7 +157,30 @@ async function create_component (entries_obj) {
     const component_content = await factory(subs[index])
     console.log('component_content', index)
     component_content.className = 'component-content'
-    inner.append(component_content)
+    
+    const node_id = admin.status.s2i[subs[index].sid]
+    const editor_id = admin.status.a2i[admin.status.s2i[editor_subs[index].sid]]
+    inner.append(component_content, await editor(editor_subs[index]))
+    
+
+    const result = {}
+    const drive = admin.status.dataset.drive
+
+    pairs[editor_id] = node_id
+    
+    const datasets = drive.list('', node_id)
+    for(dataset of datasets) {
+      result[dataset] = {}
+      const files = drive.list(dataset, node_id)
+      for(file of files){
+        result[dataset][file] = (await drive.get(dataset+file, node_id)).raw
+      }
+    }
+    
+
+    const port = await io.at(editor_id)
+    port.postMessage(result)
+
     components_wrapper.appendChild(outer)
     wrappers[index] = { outer, inner, name, checkbox_state: is_initially_checked }
     index++
@@ -364,7 +397,16 @@ function fallback_module () {
       'style': 'style',
     }
   }
-  subs['../src/node_modules/quick_editor'] = 0
+  subs['../src/node_modules/quick_editor'] = {
+    $: '',
+    mapping: {
+      'style': 'style'
+    }
+  }
+  for(i = 0; i < Object.keys(subs).length - 2; i++){
+    subs['../src/node_modules/quick_editor'][i] = quick_editor$
+  }
+  
   return {
     _: subs,
     drive: {
@@ -449,10 +491,41 @@ function fallback_module () {
         input:checked + .slider::before {
           transform: translateX(24px);
         }
-        `
+        .component-wrapper {
+        position: relative;
+        overflow: visible;
+      }
+      .component-wrapper:hover::before {
+        content: '';
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        top: 0;
+        left: 0;
+        border: 4px solid skyblue;
+        pointer-events: none;
+        z-index: 4;
+      }
+      .component-wrapper:hover .quick-editor {
+        display: block;
+      }
+      .quick-editor {
+        display: none;
+        position: absolute;
+        top: -5px;
+        right: -10px;
+        z-index: 5;
+      }`
         }
       }
     }
+  }
+  function quick_editor$ (args, tools, [quick_editor]){
+    const state = quick_editor()
+    state.net = {
+      page: {}
+    }
+    return state
   }
   function subgen (name) {
     subs[name] = {
