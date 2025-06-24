@@ -836,10 +836,16 @@ async function component (opts, protocol) {
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
   <div class="graph-explorer">
+    <div class="root-node">
+      <span class="tree-prefix">🪄┬</span>
+      <span class="icon-root node-name">root</span>
+    </div>
     <div class="explorer-container"></div>
   </div>`
-
+  const graph_explorer = shadow.querySelector('.graph-explorer')
+  const tree_prefix = shadow.querySelector('.tree-prefix')
   const container = shadow.querySelector('.explorer-container')
+  const root_node = shadow.querySelector('.root-node')
 
   /******************************************************************************
   Variables for entries and view management. To get data from the state drive.
@@ -847,7 +853,7 @@ async function component (opts, protocol) {
   let entries = {}
   let view = []
   let view_num = 0
-  let expanded_nodes = new Set()
+  let expanded_nodes = new Set(['/']) // Root is expanded by default
   let init = false
 
   /******************************************************************************
@@ -869,7 +875,7 @@ async function component (opts, protocol) {
       }
     })
   }, {
-    root: container,
+    root: graph_explorer,
     threshold: 0.1
   })
 
@@ -882,6 +888,11 @@ async function component (opts, protocol) {
 
 
   const subs = await sdb.watch(onbatch)
+  graph_explorer.onscroll = () => console.log(view)
+  /******************************************************************************
+  Setup root node click functionality
+  ******************************************************************************/
+  root_node.onclick = onroot
 
   /******************************************************************************
   Resize Observer
@@ -928,6 +939,16 @@ async function component (opts, protocol) {
     sheet.replaceSync(data)
     shadow.adoptedStyleSheets = [sheet]
   }
+  function onroot () {
+    if (expanded_nodes.has('/')) {
+      expanded_nodes.delete('/')
+      tree_prefix.textContent = '🪄─'
+    } else {
+      expanded_nodes.add('/')
+      tree_prefix.textContent = '🪄┬'
+    }
+    render_visible_nodes()
+  }
   /******************************************************************************
   Function for the rendering based on the visible nodes.
   ******************************************************************************/
@@ -949,7 +970,8 @@ async function component (opts, protocol) {
     const root_entry = entries["/"]
     if (!root_entry) return visible_entries
     
-    visible_entries.push(root_entry)
+    if (!expanded_nodes.has('/')) return visible_entries
+    
     let queue = [...root_entry.subs.map(path => entries[path])]
     
     while (queue.length > 0 && visible_entries.length < view_num) {
@@ -971,17 +993,26 @@ async function component (opts, protocol) {
   function create_node(entry) {
     const node = document.createElement('div')
     const entry_path = Object.keys(entries).find(key => entries[key] === entry)
+
     const depth = calculate_depth(entry_path)
     const is_expanded = expanded_nodes.has(entry_path)
+
+    const parent_path_split = entry_path.split('/')
+    parent_path_split.pop()
+    const parent_path = parent_path_split.join('/')
+    const parent_entry = entries[parent_path] || entries['/']
+    const parent_sub_num = parent_entry.subs ? parent_entry.subs.length - 1: 0
+    const is_last = entry_path === entries[parent_path]?.subs?.[ parent_sub_num ]
+
     const has_children = entry.subs && entry.subs.length > 0
     
     let icon_class = get_icon_class_for_type(entry.type)
-    let prefix = create_tree_prefix(entry, depth, is_expanded, has_children)
+    let prefix = create_tree_prefix(depth, is_expanded, is_last)
     
     node.className = 'explorer-node'
     node.dataset.path = entry_path
     node.dataset.index = entry_path
-    node.style.paddingLeft = `${depth * 10}px`
+    node.style.paddingLeft = `17px`
     
     node.innerHTML = `
       <span class="tree-prefix">${prefix}</span>
@@ -1034,13 +1065,14 @@ async function component (opts, protocol) {
    Prefix creation for tree structure.
    //TODO: Add support for different icons based on entry type.
   /******************************************************************************/
-  function create_tree_prefix(entry, depth, is_expanded, has_children) {
-    if (depth === 0) return has_children ? (is_expanded ? '🪄┬' : '🪄┬') : '🪄─'
-    if (has_children) {
-      return is_expanded ? '├┬' : '├─'
-    } else {
-      return '└─'
+  function create_tree_prefix(depth, is_expanded, is_last) {
+    let pipe = ''
+    while (depth > 0) {
+      pipe += '│'
+      depth--
     }
+    const prefix = is_expanded ? (is_last ? '└┬' : '├┬') : (is_last ? '└─' : '├─')
+    return `${pipe}${prefix}`
   }
 
   function calculate_depth(path) {
@@ -1062,22 +1094,23 @@ function fallback_module() {
             raw: `
               .graph-explorer {
                 height: 300px;
-                overflow: auto;
                 font-family: monospace;
                 color: #eee;
                 background-color: #2d3440;
+                display: flex;
+                flex-direction: column;
+                overflow: auto;
                 user-select: none;
               }
-              
+                
               .explorer-container {
-                padding: 10px;
-                height: 300px;
+                height: 100%;
               }
               
               .explorer-node {
                 display: flex;
                 align-items: center;
-                padding: 2px 0;
+                // padding: 2px 0;ssssssssssssssssssss
                 white-space: nowrap;
                 cursor: pointer;
               }
