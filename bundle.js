@@ -2389,9 +2389,7 @@ module.exports = steps_wizard
 async function steps_wizard (opts) {
   const { id, sdb } = await get(opts.sid)
   const {drive} = sdb
-
-  let init = false;
-
+  
   const on = {
     style: inject,
     variables: onvariables,
@@ -2443,8 +2441,7 @@ async function steps_wizard (opts) {
           step.is_completed = true
           step.status = 'completed';
           console.log('Clicked:', step);
-          render_steps(steps);
-          console.log("data is pushed through put", drive.put('variables/steps_wizard.json', steps))
+          drive.put('variables/steps_wizard.json', {'change_path': steps})
         }
       };
 
@@ -2468,7 +2465,7 @@ async function steps_wizard (opts) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
       const func = on[type] || fail
       func(data, type)
-    }    
+    }
   }
   function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
   function inject (data) {
@@ -2480,10 +2477,7 @@ async function steps_wizard (opts) {
   function onvariables (data) {
     const vars = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
     variables = vars['change_path'] 
-    if (!init) {
-      render_steps(variables);
-      init = true
-    }
+    render_steps(variables);
   }
 
 }
