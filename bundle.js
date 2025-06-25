@@ -853,9 +853,10 @@ async function component (opts, protocol) {
   let entries = {}
   let view = []
   let view_num = 0
-  let expanded_nodes = new Set(['/']) // Root is expanded by default
+  let expanded_subs = new Set(['/']) // Root is expanded by default
+  let expanded_supers = new Set([]) // New set for expanded supers
   let init = false
-
+  let ignore_depth = []
   /******************************************************************************
   Intersection Observer to track which nodes are currently in view.
   //TODO: Lazy loading of nodes based on scroll visibility.
@@ -866,11 +867,13 @@ async function component (opts, protocol) {
       if (entry.isIntersecting) {
         if (!view.includes(node_id)) {
           view.push(node_id)
+          console.log('Node in view:', node_id)
         }
       } else {
         const index = view.indexOf(node_id)
         if (index !== -1) {
           view.splice(index, 1)
+          console.log('Node out of view:', node_id)
         }
       }
     })
@@ -940,11 +943,11 @@ async function component (opts, protocol) {
     shadow.adoptedStyleSheets = [sheet]
   }
   function onroot () {
-    if (expanded_nodes.has('/')) {
-      expanded_nodes.delete('/')
+    if (expanded_subs.has('/')) {
+      expanded_subs.delete('/')
       tree_prefix.textContent = '🪄─'
     } else {
-      expanded_nodes.add('/')
+      expanded_subs.add('/')
       tree_prefix.textContent = '🪄┬'
     }
     render_visible_nodes()
@@ -957,6 +960,7 @@ async function component (opts, protocol) {
     if (Object.keys(entries).length === 0) return
     
     const visible_entries = calculate_visible_entries()
+    ignore_depth = []
     visible_entries.forEach(entry => {
       const node = create_node(entry)
       // console.log(container, node)
@@ -970,18 +974,29 @@ async function component (opts, protocol) {
     const root_entry = entries["/"]
     if (!root_entry) return visible_entries
     
-    if (!expanded_nodes.has('/')) return visible_entries
+    if (!expanded_subs.has('/') && !expanded_supers.has('/')) return visible_entries
     
-    let queue = [...root_entry.subs.map(path => entries[path])]
-    
+    let queue = []
+    if (expanded_subs.has('/')) {
+      queue.push(...(root_entry.subs || []).map(path => entries[path]))
+    }
+    if (expanded_supers.has('/') && root_entry.hubs) {
+      queue.push(...root_entry.hubs.map(path => entries[path]))
+    }
+
     while (queue.length > 0 && visible_entries.length < view_num) {
       const entry = queue.shift()
       if (!entry) continue
       visible_entries.push(entry)
 
       const entry_path = Object.keys(entries).find(key => entries[key] === entry)
-      if (expanded_nodes.has(entry_path) && entry.subs && entry.subs.length > 0) {
+      // Handle subs
+      if (expanded_subs.has(entry_path) && entry.subs && entry.subs.length > 0) {
         queue = [...entry.subs.map(path => entries[path]), ...queue]
+      }
+      // Handle hubs (supers)
+      if (expanded_supers.has(entry_path) && entry.hubs && entry.hubs.length > 0) {
+        queue = [...entry.hubs.map(path => entries[path]), ...queue]
       }
     }
     
@@ -995,56 +1010,65 @@ async function component (opts, protocol) {
     const entry_path = Object.keys(entries).find(key => entries[key] === entry)
 
     const depth = calculate_depth(entry_path)
-    const is_expanded = expanded_nodes.has(entry_path)
+    const is_expanded = expanded_subs.has(entry_path)
+    const is_super_expanded = expanded_supers.has(entry_path)
 
     const parent_path_split = entry_path.split('/')
     parent_path_split.pop()
-    const parent_path = parent_path_split.join('/')
+    const parent_path = parent_path_split.join('/') || '/'
     const parent_entry = entries[parent_path] || entries['/']
     const parent_sub_num = parent_entry.subs ? parent_entry.subs.length - 1: 0
     const is_last = entry_path === entries[parent_path]?.subs?.[ parent_sub_num ]
 
     const has_children = entry.subs && entry.subs.length > 0
-    
+
     let icon_class = get_icon_class_for_type(entry.type)
-    let prefix = create_tree_prefix(depth, is_expanded, is_last)
-    
+    let prefix = create_tree_prefix(depth, is_expanded, is_last, ignore_depth)
+
     node.className = 'explorer-node'
     node.dataset.path = entry_path
     node.dataset.index = entry_path
     node.style.paddingLeft = `17px`
-    
+
     node.innerHTML = `
       <span class="tree-prefix">${prefix}</span>
       <span class="node-icon ${icon_class}"></span>
       <span class="node-name">${entry.name}</span>
     `
-    
-    // Setup click handlers
+
     const prefix_el = node.querySelector('.tree-prefix')
     const icon_el = node.querySelector('.node-icon')
-    
+
     if (has_children) {
-      prefix_el.onclick = null
-      //TODO: Add supernode support
-      icon_el.onclick = () => toggle_node(entry)
+      icon_el.onclick = () => toggle_subs(entry)
     }
-    
+    // TODO: finish this
+    prefix_el.onclick = () => toggle_super(entry)
+
     return node
   }
 
-  // Toggle node expansion state
-  function toggle_node(entry) {
+  function toggle_subs(entry) {
     const path = Object.keys(entries).find(key => entries[key] === entry)
     
-    if (expanded_nodes.has(path)) {
-      expanded_nodes.delete(path)
+    if (expanded_subs.has(path)) {
+      expanded_subs.delete(path)
     } else {
-      expanded_nodes.add(path)
+      expanded_subs.add(path)
     }
     render_visible_nodes()
     // console.log('view:', view)
     // console.log('view:', view_num)
+  }
+
+  function toggle_super(entry) {
+    const path = Object.keys(entries).find(key => entries[key] === entry)
+    if (expanded_supers.has(path)) {
+      expanded_supers.delete(path)
+    } else {
+      expanded_supers.add(path)
+    }
+    render_visible_nodes()
   }
 
   // Get appropriate CSS class for entry type
@@ -1065,9 +1089,12 @@ async function component (opts, protocol) {
    Prefix creation for tree structure.
    //TODO: Add support for different icons based on entry type.
   /******************************************************************************/
-  function create_tree_prefix(depth, is_expanded, is_last) {
+  function create_tree_prefix(depth, is_expanded, is_last, ignore_depth) {
     let pipe = ''
     while (depth > 0) {
+      // console.log('depth:', depth, ignore_depth.includes(depth))
+      // pipe += ignore_depth.includes(depth) ? ' ' : '│'
+      // console.log('pipe:', pipe)
       pipe += '│'
       depth--
     }
