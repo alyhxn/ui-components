@@ -1416,6 +1416,12 @@ async function quick_actions(opts, protocol) {
       <div class="input-display">
         <span class="slash-prefix">/</span>
         <span class="command-text"></span>
+        <span class="step-display" style="display: none;">
+          <span>steps:<span>
+          <span class="current-step">1</span>
+          <span class="step-separator">-</span>
+          <span class="total-step">1</span>
+        </span>
         <input class="input-field" type="text" placeholder="Type to search actions...">
       </div>
       <button class="submit-btn" style="display: none;"></button>
@@ -1432,6 +1438,9 @@ async function quick_actions(opts, protocol) {
   const input_field = shadow.querySelector('.input-field')
   const submit_btn = shadow.querySelector('.submit-btn')
   const close_btn = shadow.querySelector('.close-btn')
+  const step_display = shadow.querySelector('.step-display')
+  const current_step = shadow.querySelector('.current-step')
+  const total_steps = shadow.querySelector('.total-step')
   const style = shadow.querySelector('style')
   const main = shadow.querySelector('.main')
 
@@ -1479,6 +1488,12 @@ async function quick_actions(opts, protocol) {
     if (selected_action) {
       console.log('Selected action submitted:', selected_action)
       _.up({ type: 'action_submitted', data: selected_action })
+      const nextStep = ++selected_action.current_step
+      current_step.textContent = nextStep
+
+      if (nextStep > selected_action.total_steps) {
+        deactivate_input_field()
+      }
     }
   }
   function oninput(e) {
@@ -1507,7 +1522,11 @@ async function quick_actions(opts, protocol) {
     if (selected_action) {
       slash_prefix.style.display = 'inline'
       command_text.style.display = 'inline'
-      command_text.textContent = `"${selected_action.action}"`
+      command_text.textContent = `#${selected_action.action}`
+      current_step.textContent = selected_action.current_step
+      total_steps.textContent = selected_action.total_steps
+      step_display.style.display = 'inline-flex'
+      
       input_field.style.display = 'none'
       submit_btn.style.display = 'flex'
     } else {
@@ -1515,6 +1534,7 @@ async function quick_actions(opts, protocol) {
       command_text.style.display = 'none'
       input_field.style.display = 'block'
       submit_btn.style.display = 'none'
+      step_display.style.display = 'none'
       input_field.placeholder = 'Type to search actions...'
     }
   }
@@ -1756,6 +1776,28 @@ function fallback_module() {
               svg {
                 width: 16px;
                 height: 16px;
+              }
+              .step-display {
+                display: inline-flex;
+                align-items: center;
+                gap: 2px;
+                margin-left: 8px;
+                background: #2d2d2d;
+                border: 1px solid #666;
+                border-radius: 4px;
+                padding: 1px 6px;
+                font-size: 12px;
+                color: #fff;
+                font-family: monospace;
+              }
+              .current-step {
+                color:#f0f0f0;
+              }
+              .step-separator {
+                color: #888;
+              }
+              .total-step {
+                color: #f0f0f0;
               }
             `
           }
@@ -2384,6 +2426,9 @@ const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 
+const quick_actions = require('quick_actions')
+const actions = require('actions')
+
 module.exports = steps_wizard
 
 async function steps_wizard (opts) {
@@ -2396,12 +2441,17 @@ async function steps_wizard (opts) {
   }
 
   let variables = []
+  let current_step = 1;
+
+  let _ = {send_quick_actions: null}
 
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
   <div class="steps-wizard main">
-    <div class="steps-slot"></div>
+    <div class="actions"></div>
+    <div class="steps-slot hide"></div>
+    <div class="quick-actions"></div>
   </div>
   <style>
   </style>
@@ -2409,14 +2459,24 @@ async function steps_wizard (opts) {
 
   const style = shadow.querySelector('style')
   const steps_entries = shadow.querySelector('.steps-slot')
+  const quick_actions_placeholder = shadow.querySelector('.quick-actions')
+  const actions_placeholder = shadow.querySelector('.actions')
 
   const subs = await sdb.watch(onbatch)
+
+  const quick_actions_el = await quick_actions(subs[0], quick_actions_protocol)
+  quick_actions_placeholder.replaceWith(quick_actions_el)
+
+  const actions_el = await actions(subs[1], actions_protocol)
+  actions_el.classList.add('hide')
+  actions_placeholder.replaceWith(actions_el)
 
   return el
   
   function render_steps(steps) {
     if (!steps)
       return;
+
     steps_entries.innerHTML = '';
 
     steps.forEach((step, index) => {
@@ -2436,17 +2496,28 @@ async function steps_wizard (opts) {
       btn.classList.add(`step-${status}`);
       btn.disabled = (status === 'disabled');
 
+      if (accessible) {
+        current_step = index + 1;
+      }
+
       btn.onclick = () => {
         if (!btn.disabled) {
-          step.is_completed = true
-          step.status = 'completed';
           console.log('Clicked:', step);
-          drive.put('variables/steps_wizard.json', {'change_path': steps})
         }
       };
 
       steps_entries.appendChild(btn);
     });
+
+    if (_.send_quick_actions) {
+      _.send_quick_actions({
+        type: 'update_steps',
+        data: {
+          current_step: current_step,
+          total_steps: steps.length
+        }
+      });
+    }
     
   }
 
@@ -2480,15 +2551,112 @@ async function steps_wizard (opts) {
     render_steps(variables);
   }
 
+
+  function cleanup () {
+    const cleaned = variables.map(step => ({
+      ...step,
+      is_completed: false
+    }));
+
+    drive.put('variables/steps_wizard.json', { change_path: cleaned });
+  }
+  // ---- Toggle Views ----
+  function toggle_view(el, show) {
+    el.classList.toggle('hide', !show);
+  }
+
+  function steps_toggle_view(display) {
+    toggle_view(steps_entries, display === 'block');
+  }
+
+  function actions_toggle_view(display) {
+    toggle_view(actions_el, display === 'block');
+  }
+
+  // ---- Protocols ----
+  function actions_protocol (send) {
+    _.send_actions = send
+    return on
+    function on ({ type, data }) { 
+      console.log('actions data', type, data)
+      _.send_quick_actions({
+        type,
+        data: {
+        ...data,
+        current_step: current_step,
+        total_steps: variables.length
+        }
+      })
+      
+      steps_toggle_view('block')
+      actions_toggle_view('hide')
+    }
+  }
+
+  function quick_actions_protocol (send) {
+    _.send_quick_actions = send
+    return on
+    function on ({ type, data }) {
+      onmessage({type, data})
+    }
+  }
+  
+  function onmessage ({ type, data }) {
+    if (type == 'display_actions') {
+      actions_toggle_view(data)
+      if (data === 'none') {
+        steps_toggle_view(data)
+        cleanup()
+      }
+    } else if (type == 'action_submitted') {
+      const step = variables[data.current_step - 1]
+      Object.assign(step, {
+        is_completed: true,
+        status: 'completed'
+      })
+      drive.put('variables/steps_wizard.json', {change_path : variables})
+    }
+  }
+
 }
+
+
 
 function fallback_module () {
   return {
-    api: fallback_instance
+    api: fallback_instance,
+    _: {
+      'quick_actions': {
+        $: ''
+      },
+      'actions': {
+        $: ''
+      },
+    }
   }
 
   function fallback_instance () {
     return {
+      _: {
+        'quick_actions': {
+          0: '',
+          mapping: {
+            'style': 'style',
+            'icons': 'icons',
+            'actions': 'actions',
+            'hardcons': 'hardcons'
+          }
+        },
+        'actions': {
+          0: '',
+          mapping: {
+            'style': 'style',
+            'actions': 'actions',
+            'icons': 'icons',
+            'hardcons': 'hardcons'
+          }
+        },
+      },
       drive: {
         'style/': {
           'stepswizard.css': {
@@ -2506,7 +2674,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/steps_wizard/steps_wizard.js")
-},{"STATE":1}],11:[function(require,module,exports){
+},{"STATE":1,"actions":3,"quick_actions":7}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
