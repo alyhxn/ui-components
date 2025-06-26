@@ -853,8 +853,8 @@ async function component (opts, protocol) {
   let entries = {}
   let view = []
   let view_num = 0
-  let expanded_subs = new Set(['/']) // Root is expanded by default
-  let expanded_supers = new Set([]) // New set for expanded supers
+  let expanded_subs = new Map([["/",NaN]]) // Root is expanded by default
+  let expanded_hubs = new Map()
   let init = false
   let ignore_depth = []
   /******************************************************************************
@@ -867,13 +867,13 @@ async function component (opts, protocol) {
       if (entry.isIntersecting) {
         if (!view.includes(node_id)) {
           view.push(node_id)
-          console.log('Node in view:', node_id)
+          // console.log('Node in view:', node_id)
         }
       } else {
         const index = view.indexOf(node_id)
         if (index !== -1) {
           view.splice(index, 1)
-          console.log('Node out of view:', node_id)
+          // console.log('Node out of view:', node_id)
         }
       }
     })
@@ -891,7 +891,7 @@ async function component (opts, protocol) {
 
 
   const subs = await sdb.watch(onbatch)
-  graph_explorer.onscroll = () => console.log(view)
+  // graph_explorer.onscroll = () => console.log(view)
   /******************************************************************************
   Setup root node click functionality
   ******************************************************************************/
@@ -947,7 +947,7 @@ async function component (opts, protocol) {
       expanded_subs.delete('/')
       tree_prefix.textContent = '🪄─'
     } else {
-      expanded_subs.add('/')
+      expanded_subs.set('/', 0)
       tree_prefix.textContent = '🪄┬'
     }
     render_visible_nodes()
@@ -958,9 +958,12 @@ async function component (opts, protocol) {
   function render_visible_nodes() {
     container.replaceChildren()
     if (Object.keys(entries).length === 0) return
-    
     const visible_entries = calculate_visible_entries()
+    console.log('<--------------------------------------------------------------------------------------------------------------------------------->')
+    console.log('expanded_hubs:', expanded_hubs)
+    console.log('Visible entries:', visible_entries)
     ignore_depth = []
+    console.log('ignore_depth:', ignore_depth)
     visible_entries.forEach(entry => {
       const node = create_node(entry)
       // console.log(container, node)
@@ -972,31 +975,32 @@ async function component (opts, protocol) {
   function calculate_visible_entries() {
     const visible_entries = []
     const root_entry = entries["/"]
-    if (!root_entry) return visible_entries
-    
-    if (!expanded_subs.has('/') && !expanded_supers.has('/')) return visible_entries
+    if (!root_entry || !expanded_subs.has('/')) return visible_entries
     
     let queue = []
     if (expanded_subs.has('/')) {
       queue.push(...(root_entry.subs || []).map(path => entries[path]))
     }
-    if (expanded_supers.has('/') && root_entry.hubs) {
-      queue.push(...root_entry.hubs.map(path => entries[path]))
-    }
-
     while (queue.length > 0 && visible_entries.length < view_num) {
       const entry = queue.shift()
       if (!entry) continue
       visible_entries.push(entry)
 
       const entry_path = Object.keys(entries).find(key => entries[key] === entry)
+      // Handle hubs (supers)
+      if (entry.hubs && entry.hubs.length > 0) {
+        if(expanded_hubs.has(entry_path) && expanded_hubs.get(entry_path).depth === calculate_depth(entry_path)){
+          console.log('expanded_hubs:', expanded_hubs)
+          queue = [...entry.hubs.map(path => entries[path]), ...queue]
+        }
+        console.log('queue:', queue)
+      }
       // Handle subs
       if (expanded_subs.has(entry_path) && entry.subs && entry.subs.length > 0) {
-        queue = [...entry.subs.map(path => entries[path]), ...queue]
-      }
-      // Handle hubs (supers)
-      if (expanded_supers.has(entry_path) && entry.hubs && entry.hubs.length > 0) {
-        queue = [...entry.hubs.map(path => entries[path]), ...queue]
+        // if(expanded_subs.get(entry_path).depth === calculate_depth(entry_path)){
+          queue = [...entry.subs.map(path => entries[path]), ...queue]
+          console.log('queue:', queue)
+        // }
       }
     }
     
@@ -1008,10 +1012,10 @@ async function component (opts, protocol) {
   function create_node(entry) {
     const node = document.createElement('div')
     const entry_path = Object.keys(entries).find(key => entries[key] === entry)
+    const hubs = entry.hubs || []
 
     const depth = calculate_depth(entry_path)
     const is_expanded = expanded_subs.has(entry_path)
-    const is_super_expanded = expanded_supers.has(entry_path)
 
     const parent_path_split = entry_path.split('/')
     parent_path_split.pop()
@@ -1040,33 +1044,30 @@ async function component (opts, protocol) {
     const icon_el = node.querySelector('.node-icon')
 
     if (has_children) {
-      icon_el.onclick = () => toggle_subs(entry)
+      icon_el.onclick = () => toggle_subs(entry_path, depth)
     }
     // TODO: finish this
-    prefix_el.onclick = () => toggle_super(entry)
+    prefix_el.onclick = () => toggle_super(entry_path, {depth, hubs})
 
     return node
   }
 
-  function toggle_subs(entry) {
-    const path = Object.keys(entries).find(key => entries[key] === entry)
-    
-    if (expanded_subs.has(path)) {
-      expanded_subs.delete(path)
+  function toggle_subs(entry_path, depth) {
+    if (expanded_subs.has(entry_path)) {
+      expanded_subs.delete(entry_path)
     } else {
-      expanded_subs.add(path)
+      expanded_subs.set(entry_path, depth)
     }
     render_visible_nodes()
     // console.log('view:', view)
     // console.log('view:', view_num)
   }
 
-  function toggle_super(entry) {
-    const path = Object.keys(entries).find(key => entries[key] === entry)
-    if (expanded_supers.has(path)) {
-      expanded_supers.delete(path)
+  function toggle_super(entry_path, data) {
+    if (expanded_hubs.has(entry_path)) {
+      expanded_hubs.delete(entry_path)
     } else {
-      expanded_supers.add(path)
+      expanded_hubs.set(entry_path, data)
     }
     render_visible_nodes()
   }
@@ -1137,7 +1138,7 @@ function fallback_module() {
               .explorer-node {
                 display: flex;
                 align-items: center;
-                // padding: 2px 0;ssssssssssssssssssss
+                /* padding: 2px 0; */
                 white-space: nowrap;
                 cursor: pointer;
               }
