@@ -820,12 +820,12 @@ function fallback_module () {
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
+const { get } = statedb(fallback_module)
 
 module.exports = graph_explorer
 
 async function graph_explorer (opts) {
-  const { id, sdb } = await get(opts.sid)
+  const { sdb } = await get(opts.sid)
   const { drive } = sdb
   const on = {
     entries: on_entries,
@@ -833,45 +833,51 @@ async function graph_explorer (opts) {
   }
 
   const el = document.createElement('div')
+  el.className = 'graph-explorer-wrapper'
   const shadow = el.attachShadow({ mode: 'closed' })
-  shadow.innerHTML = `
-    <div class="graph-container"></div>
-  `
+  shadow.innerHTML = `<div class="graph-container"></div>`
   const container = shadow.querySelector('.graph-container')
 
   let all_entries = {}
-  const instance_states = {}
   let view = []
-  let render_offset = 0
-  const view_chunk_size = 20
+  const instance_states = {}
 
-  const observer = new IntersectionObserver(handle_scroll, {
+  let start_index = 0
+  let end_index = 0
+  const chunk_size = 20
+  const max_rendered_nodes = chunk_size * 3
+  const node_height = 22
+
+  const top_sentinel = document.createElement('div')
+  const bottom_sentinel = document.createElement('div')
+  top_sentinel.className = 'sentinel'
+  bottom_sentinel.className = 'sentinel'
+
+  const observer = new IntersectionObserver(handle_sentinel_intersection, {
     root: el,
-    threshold: 0.1
+    threshold: 0
   })
 
   await sdb.watch(onbatch)
 
   return el
 
-  async function onbatch(batch) {
-    for (const { type, paths } of batch){
+  async function onbatch (batch) {
+    for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
       const func = on[type] || fail
       func(data, type)
     }
   }
 
-  function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
 
   function on_entries (data) {
-    const parsed_data = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
-    all_entries = parsed_data
+    all_entries = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
     const root_path = '/'
-    const root_instance_path = root_path
     if (all_entries[root_path]) {
-      if (!instance_states[root_instance_path]) {
-        instance_states[root_instance_path] = { expanded_subs: true, expanded_hubs: false }
+      if (!instance_states[root_path]) {
+        instance_states[root_path] = { expanded_subs: true, expanded_hubs: false }
       }
       build_and_render_view()
     }
@@ -883,82 +889,150 @@ async function graph_explorer (opts) {
     shadow.adoptedStyleSheets = [sheet]
   }
 
-  function build_and_render_view () {
+  function build_and_render_view (focal_instance_path = null) {
+    const last_scroll_top = el.scrollTop
+
     view = []
-    const build_view_recursive = (base_path, parent_instance_path, depth, is_last) => {
-      const instance_path = `${parent_instance_path}|${base_path}`
-      const entry = all_entries[base_path]
-      if (!entry) return
+    build_view_recursive('/', '', 0, true, false, [])
 
-      if (!instance_states[instance_path]) {
-        instance_states[instance_path] = { expanded_subs: false, expanded_hubs: false }
-      }
-      const state = instance_states[instance_path]
-
-      view.push({ base_path, instance_path, depth, is_last })
-
-      if (state.expanded_hubs) {
-        entry.hubs.forEach((hub_path, i, arr) => {
-          build_view_recursive(hub_path, instance_path, depth + 1, i === arr.length - 1)
-        })
-      }
-
-      if (state.expanded_subs && entry.subs) {
-        entry.subs.forEach((sub_path, i, arr) => {
-          build_view_recursive(sub_path, instance_path, depth + 1, i === arr.length - 1)
-        })
-      }
+    let focal_index = view.findIndex(node => node.instance_path === focal_instance_path)
+    if (focal_index === -1) {
+      focal_index = Math.floor(last_scroll_top / node_height)
     }
 
-    build_view_recursive('/', '', 0, true)
+    start_index = Math.max(0, focal_index - Math.floor(chunk_size / 2))
+    end_index = start_index
 
-    container.innerHTML = ''
-    render_offset = 0
-    render_chunk()
-  }
+    container.replaceChildren()
+    container.appendChild(top_sentinel)
+    container.appendChild(bottom_sentinel)
+    observer.observe(top_sentinel)
+    observer.observe(bottom_sentinel)
 
-  function render_chunk () {
-    const fragment = document.createDocumentFragment()
-    const chunk = view.slice(render_offset, render_offset + view_chunk_size)
+    render_next_chunk()
 
-    chunk.forEach(node_data => {
-      const node_el = create_node(node_data)
-      fragment.appendChild(node_el)
+    requestAnimationFrame(() => {
+      el.scrollTop = last_scroll_top
     })
+  }
 
-    container.appendChild(fragment)
-    render_offset += chunk.length
+  function build_view_recursive (base_path, parent_instance_path, depth, is_last, is_hub, parent_pipe_trail) {
+    const instance_path = `${parent_instance_path}|${base_path}`
+    const entry = all_entries[base_path]
+    if (!entry) return
 
-    observer.disconnect()
-    if (render_offset < view.length) {
-      const last_el = container.lastElementChild
-      if (last_el) observer.observe(last_el)
+    if (!instance_states[instance_path]) {
+      instance_states[instance_path] = { expanded_subs: false, expanded_hubs: false }
+    }
+    const state = instance_states[instance_path]
+    const children_pipe_trail = [...parent_pipe_trail]
+    if (depth > 0) {
+      children_pipe_trail.push(!is_last)
+    }
+
+    if (state.expanded_hubs && entry.hubs) {
+      entry.hubs.forEach((hub_path, i, arr) => {
+        build_view_recursive(hub_path, instance_path, depth + 1, i === arr.length - 1, true, children_pipe_trail)
+      })
+    }
+
+    view.push({ base_path, instance_path, depth, is_last, is_hub, pipe_trail: parent_pipe_trail })
+
+    if (state.expanded_subs && entry.subs) {
+      entry.subs.forEach((sub_path, i, arr) => {
+        build_view_recursive(sub_path, instance_path, depth + 1, i === arr.length - 1, false, children_pipe_trail)
+      })
     }
   }
 
-  function create_node ({ base_path, instance_path, depth, is_last }) {
+  function handle_sentinel_intersection (entries) {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        if (entry.target === top_sentinel) render_prev_chunk()
+        else if (entry.target === bottom_sentinel) render_next_chunk()
+      }
+    })
+  }
+
+  function render_next_chunk () {
+    if (end_index >= view.length) return
+    const fragment = document.createDocumentFragment()
+    const next_end = Math.min(view.length, end_index + chunk_size)
+    for (let i = end_index; i < next_end; i++) {
+      fragment.appendChild(create_node(view[i]))
+    }
+    container.insertBefore(fragment, bottom_sentinel)
+    end_index = next_end
+    cleanup_dom(false)
+  }
+
+  function render_prev_chunk () {
+    if (start_index <= 0) return
+    const fragment = document.createDocumentFragment()
+    const prev_start = Math.max(0, start_index - chunk_size)
+    for (let i = prev_start; i < start_index; i++) {
+      fragment.appendChild(create_node(view[i]))
+    }
+    const old_scroll_height = container.scrollHeight
+    const old_scroll_top = el.scrollTop
+    container.insertBefore(fragment, top_sentinel.nextSibling)
+    start_index = prev_start
+    el.scrollTop = old_scroll_top + (container.scrollHeight - old_scroll_height)
+    cleanup_dom(true)
+  }
+
+  function cleanup_dom (is_scrolling_up) {
+    const rendered_count = end_index - start_index
+    if (rendered_count < max_rendered_nodes) return
+    const to_remove_count = rendered_count - max_rendered_nodes
+    if (is_scrolling_up) {
+      for (let i = 0; i < to_remove_count; i++) bottom_sentinel.previousElementSibling.remove()
+      end_index -= to_remove_count
+    } else {
+      for (let i = 0; i < to_remove_count; i++) top_sentinel.nextElementSibling.remove()
+      start_index += to_remove_count
+    }
+  }
+
+  function get_prefix (is_last, has_subs, state, is_hub) {
+    const { expanded_subs, expanded_hubs } = state
+    if (is_hub) {
+      if (expanded_subs && expanded_hubs) return '┌┼'
+      if (expanded_subs) return '┌┬'
+      if (expanded_hubs) return '┌┴'
+      return '┌─'
+    } else if (is_last) {
+      if (expanded_subs && expanded_hubs) return '└┼'
+      if (expanded_subs) return '└┬'
+      if (expanded_hubs) return '└┴'
+      return '└─'
+    } else {
+      if (expanded_subs && expanded_hubs) return '├┼'
+      if (expanded_subs) return '├┬'
+      if (expanded_hubs) return '├┴'
+      return '├─'
+    }
+  }
+
+  function create_node ({ base_path, instance_path, depth, is_last, is_hub, pipe_trail }) {
     const entry = all_entries[base_path]
     const state = instance_states[instance_path]
-
     const el = document.createElement('div')
     el.className = `node type-${entry.type}`
-    el.style.paddingLeft = `${depth * 20}px`
     el.dataset.instance_path = instance_path
 
     const has_subs = entry.subs && entry.subs.length > 0
-    const prefix_symbol = is_last ? (has_subs && state.expanded_subs ? '└┬' : '└─') : (has_subs && state.expanded_subs ? '├┬' : '├─')
+    const prefix_symbol = get_prefix(is_last, has_subs, state, is_hub)
+    const pipe_html = pipe_trail.map(should_pipe => `<span class="pipe">${should_pipe ? '│' : ' '}</span>`).join('')
 
     el.innerHTML = `
+      <span class="indent">${pipe_html}</span>
       <span class="prefix">${prefix_symbol}</span>
       <span class="icon"></span>
       <span class="name">${entry.name}</span>
     `
-    const prefix_el = el.querySelector('.prefix')
-    const icon_el = el.querySelector('.icon')
-
-    prefix_el.onclick = () => toggle_hubs(instance_path)
-    icon_el.onclick = () => toggle_subs(instance_path)
-
+    el.querySelector('.prefix').onclick = () => toggle_hubs(instance_path)
+    el.querySelector('.icon').onclick = () => toggle_subs(instance_path)
     return el
   }
 
@@ -966,7 +1040,7 @@ async function graph_explorer (opts) {
     const state = instance_states[instance_path]
     if (state) {
       state.expanded_subs = !state.expanded_subs
-      build_and_render_view()
+      build_and_render_view(instance_path)
     }
   }
 
@@ -974,13 +1048,7 @@ async function graph_explorer (opts) {
     const state = instance_states[instance_path]
     if (state) {
       state.expanded_hubs = !state.expanded_hubs
-      build_and_render_view()
-    }
-  }
-
-  function handle_scroll (entries) {
-    if (entries[0]?.isIntersecting) {
-      render_chunk()
+      build_and_render_view(instance_path)
     }
   }
 }
@@ -993,9 +1061,7 @@ function fallback_module () {
     return {
       drive: {
         'entries/': {
-          'entries.json': {
-            $ref: 'entries.json'
-          }
+          'entries.json': { $ref: 'entries.json' }
         },
         'style/': {
           'theme.css': {
@@ -1011,29 +1077,31 @@ function fallback_module () {
               .node {
                 display: flex;
                 align-items: center;
-                padding: 1px 0;
                 white-space: nowrap;
                 cursor: default;
+                height: 22px; /* Important for scroll calculation */
+              }
+              .indent {
+                display: flex;
+              }
+              .pipe {
+                width: 1em;
+                text-align: center;
               }
               .prefix, .icon {
                 cursor: pointer;
                 margin-right: 6px;
               }
-              .icon {
-                display: inline-block;
-                width: 1em;
-                text-align: center;
-              }
-              .name {
-                flex-grow: 1;
-              }
-              .node.type-root > .icon::before { content: '🌳'; }
+              .icon { display: inline-block; width: 1em; text-align: center; }
+              .name { flex-grow: 1; }
+              .node.type-root > .icon::before { content: '🌐'; }
               .node.type-folder > .icon::before { content: '📁'; }
               .node.type-html-file > .icon::before { content: '📄'; }
               .node.type-js-file > .icon::before { content: '📜'; }
               .node.type-css-file > .icon::before { content: '🎨'; }
               .node.type-json-file > .icon::before { content: '📝'; }
               .node.type-file > .icon::before { content: '📄'; }
+              .sentinel { height: 1px; }
             `
           }
         }
