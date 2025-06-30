@@ -429,6 +429,7 @@ function fallback_module () {
           }
       
           .component-wrapper {
+            position: relative;
             padding: 15px;
             border: 3px solid #666;
             resize: both;
@@ -482,10 +483,6 @@ function fallback_module () {
         input:checked + .slider::before {
           transform: translateX(24px);
         }
-        .component-wrapper {
-        position: relative;
-        overflow: visible;
-      }
       .component-wrapper:hover::before {
         content: '';
         position: absolute;
@@ -495,7 +492,9 @@ function fallback_module () {
         left: 0;
         border: 4px solid skyblue;
         pointer-events: none;
-        z-index: 4;
+        z-index: 15;
+        resize: both;
+        overflow: auto;
       }
       .component-wrapper:hover .quick-editor {
         display: block;
@@ -505,7 +504,7 @@ function fallback_module () {
         position: absolute;
         top: -5px;
         right: -10px;
-        z-index: 5;
+        z-index: 16;
       }`
         }
       }
