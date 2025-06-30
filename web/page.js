@@ -126,7 +126,8 @@ async function boot (opts) {
     port.onmessage = event => {
       const txt = event.data
       const key = `[${by} -> ${to}]`
-      on[txt.type] && on[txt.type](...txt.args, pairs[to])
+      
+      on[txt.type] && on[txt.type](...txt.data)
 
     }
   })
@@ -166,16 +167,22 @@ async function create_component (entries_obj) {
     const result = {}
     const drive = admin.status.dataset.drive
 
-    pairs[editor_id] = node_id
     
-    const datasets = drive.list('', node_id)
-    for(dataset of datasets) {
-      result[dataset] = {}
-      const files = drive.list(dataset, node_id)
-      for(file of files){
-        result[dataset][file] = (await drive.get(dataset+file, node_id)).raw
+    const modulepath = node_id.split(':')[0]
+    const fields = admin.status.db.read_all(['state', modulepath])
+    const nodes = Object.keys(fields).filter(field => !isNaN(Number(field.split(':').at(-1))))
+    for (const node of nodes) {
+      result[node] = {}
+      const datasets = drive.list('', node)
+      for(dataset of datasets) {
+        result[node][dataset] = {}
+        const files = drive.list(dataset, node)
+        for(file of files){
+          result[node][dataset][file] = (await drive.get(dataset+file, node)).raw
+        }
       }
     }
+    
     
 
     const port = await io.at(editor_id)
