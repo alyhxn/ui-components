@@ -1,15 +1,12 @@
-const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/main/'
-const init_url = location.hash === '#dev' ? 'web/init.js' : prefix + 'src/node_modules/init.js'
+const hash = 'main'
+const base = 'https://raw.githubusercontent.com/alyhxn/playproject/'
+const prefix = base + hash
+const init_url = location.hash === '#dev' ? '/src/node_modules/init.js' : prefix + '/src/node_modules/init.js'
 const args = arguments
 
-const has_save = location.hash.includes('#save')
-const fetch_opts = has_save ? {} : { cache: 'no-store' }
 
-if (!has_save) {
-  localStorage.clear()
-}
 
-fetch(init_url, fetch_opts).then(res => res.text()).then(async source => {
+fetch(init_url, { cache: 'no-store' }).then(res => res.text()).then(async source => {
   const module = { exports: {} }
   const f = new Function('module', 'require', source)
   f(module, require)
