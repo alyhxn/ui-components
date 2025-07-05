@@ -175,7 +175,7 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/action_bar/action_bar.js")
-},{"STATE":1,"quick_actions":7}],3:[function(require,module,exports){
+},{"STATE":1,"quick_actions":10}],3:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -822,6 +822,132 @@ const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 
+module.exports = form_input
+async function form_input (opts, protocol) {
+  const { id, sdb } = await get(opts.sid)
+  const {drive} = sdb
+	
+	const on = {
+    style: inject,
+  }
+
+  let current_step = null
+	
+	if(protocol){
+    send = protocol(msg => onmessage(msg))
+    _ = { up: send }
+  }
+
+  const el = document.createElement('div')
+  const shadow = el.attachShadow({ mode: 'closed' })
+  shadow.innerHTML = `
+  <div class="input-display">
+    <div class='test'>
+      <input class="input-field" type="text" placeholder="Type to submit">
+    </div>
+  </div>
+  <style>
+  </style>`
+  const style = shadow.querySelector('style')
+  
+	const input_field_el = shadow.querySelector('.input-field')
+
+	input_field_el.oninput = function () {
+		if (this.value.length >= 10) {
+			_.up({
+        type: 'action_submitted',
+        data: {
+          value: this.value,
+          index: current_step?.index || 0
+        }
+      })
+			console.log('mark_as_complete')
+		}
+	}
+
+  const subs = await sdb.watch(onbatch)
+
+  
+  return el
+
+  async function onbatch(batch) {
+    for (const { type, paths } of batch){
+      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      const func = on[type] || fail
+      func(data, type)
+    }
+  }
+
+  function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+
+  function inject (data) {
+    style.replaceChildren((() => {
+      return document.createElement('style').textContent = data[0]
+    })())
+  }
+
+	function onmessage ({ type, data }) {
+    console.log('message from form_input', type, data)
+    if (type === 'step_data') {
+      current_step = data
+      console.log('message from form_input', input_field_el, input_field_el.value)
+      input_field_el.value = data?.data || ''
+    }
+  }
+
+}
+function fallback_module () {
+  return {
+    api: fallback_instance,
+  }
+  function fallback_instance () {
+    return {
+      drive: {
+        'style/': {
+          'theme.css': {
+            raw: `
+            .input-display {
+							background: #131315;
+              border-radius: 16px;
+              border: 1px solid #3c3c3c;
+							display: flex;
+							flex: 1;
+							align-items: center;
+							padding: 0 12px;
+							min-height: 32px;
+            }
+						.input-display:focus-within {
+							border-color: #4285f4;
+							background: #1a1a1c;
+            }	
+						.input-field {
+							flex: 1;
+							min-height: 32px;
+							background: transparent;
+							border: none;
+							color: #e8eaed;
+							padding: 0 12px;
+							font-size: 14px;
+							outline: none;
+						}
+						.input-field::placeholder {
+							color: #a6a6a6;
+						}
+						`
+          }
+        }
+      }
+    }
+  }
+}
+
+}).call(this)}).call(this,"/src/node_modules/form_input.js")
+},{"STATE":1}],6:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { sdb, get } = statedb(fallback_module)
+
 module.exports = component
 
 async function component (opts, protocol) {
@@ -1131,7 +1257,135 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/graph_explorer/graph_explorer.js")
-},{"STATE":1}],6:[function(require,module,exports){
+},{"STATE":1}],7:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { sdb, get } = statedb(fallback_module)
+
+module.exports = input_test
+async function input_test (opts, protocol) {
+  const { id, sdb } = await get(opts.sid)
+  const {drive} = sdb
+	
+	const on = {
+    style: inject,
+  }
+
+  let current_step = null
+	
+	if(protocol){
+    send = protocol(msg => onmessage(msg))
+    _ = { up: send }
+  }
+
+  const el = document.createElement('div')
+  const shadow = el.attachShadow({ mode: 'closed' })
+  shadow.innerHTML = `
+	<div class='title'> Testing 2nd Type </div>
+  <div class="input-display">
+    <input class="input-field" type="text" placeholder="Type to submit">
+  </div>
+  <style>
+  </style>`
+  const style = shadow.querySelector('style')
+  
+	const input_field_el = shadow.querySelector('.input-field')
+
+	input_field_el.oninput = function () {
+		if (this.value.length >= 10) {
+			_.up({
+        type: 'action_submitted',
+        data: {
+          value: this.value,
+          index: current_step?.index || 0
+        }
+      })
+			console.log('mark_as_complete')
+		}
+	}
+
+  const subs = await sdb.watch(onbatch)
+
+  
+  return el
+
+  async function onbatch(batch) {
+    for (const { type, paths } of batch){
+      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      const func = on[type] || fail
+      func(data, type)
+    }
+  }
+
+  function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+
+  function inject (data) {
+    style.replaceChildren((() => {
+      return document.createElement('style').textContent = data[0]
+    })())
+  }
+
+	function onmessage ({ type, data }) {
+    console.log('message from input_test', type, data)
+    if (type === 'step_data') {
+      current_step = data
+      input_field_el.value = data?.data || ''
+    }
+  }
+
+}
+function fallback_module () {
+  return {
+    api: fallback_instance,
+  }
+  function fallback_instance () {
+    return {
+      drive: {
+        'style/': {
+          'theme.css': {
+            raw: `
+						.title {
+							color: #e8eaed;
+							font-size: 18px;
+						}
+            .input-display {
+							background: #131315;
+              border-radius: 16px;
+              border: 1px solid #3c3c3c;
+							display: flex;
+							flex: 1;
+							align-items: center;
+							padding: 0 12px;
+							min-height: 32px;
+            }
+						.input-display:focus-within {
+							border-color: #4285f4;
+							background: #1a1a1c;
+            }	
+						.input-field {
+							flex: 1;
+							min-height: 32px;
+							background: transparent;
+							border: none;
+							color: #e8eaed;
+							padding: 0 12px;
+							font-size: 14px;
+							outline: none;
+						}
+						.input-field::placeholder {
+							color: #a6a6a6;
+						}
+						`
+          }
+        }
+      }
+    }
+  }
+}
+
+}).call(this)}).call(this,"/src/node_modules/input_test.js")
+},{"STATE":1}],8:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1386,7 +1640,303 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/menu.js")
-},{"STATE":1}],7:[function(require,module,exports){
+},{"STATE":1}],9:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { sdb, get } = statedb(fallback_module)
+
+const quick_actions = require('quick_actions')
+const actions = require('actions')
+const form_input = require('form_input')
+const steps_wizard = require('steps_wizard')
+const input_test = require('input_test')
+
+const component_modules = {
+  'form_input': form_input,
+  'input_test': input_test
+  // Add more form input components here if needed
+}
+
+module.exports = program
+
+async function program(opts) {
+  const { id, sdb } = await get(opts.sid)
+  const { drive } = sdb
+
+  const on = {
+    style: inject,
+    variables: onvariables,
+  }
+
+  let variables = []
+
+  const _ = {
+    send_quick_actions: null,
+    send_actions: null,
+    send_form_input: {},
+    send_steps_wizard: null
+  }
+
+  const el = document.createElement('div')
+  const shadow = el.attachShadow({ mode: 'closed' })
+  shadow.innerHTML = `
+    <div class="main">
+      <form-input></form-input>
+      <actions></actions>
+      <steps-wizard></steps-wizard>
+      <quick-actions></quick-actions>
+    </div>
+    <style></style>
+  `
+
+  const style = shadow.querySelector('style')
+  const steps_wizard_placeholder = shadow.querySelector('steps-wizard')
+  const quick_actions_placeholder = shadow.querySelector('quick-actions')
+  const actions_placeholder = shadow.querySelector('actions')
+  const form_input_placeholder = shadow.querySelector('form-input')
+
+  const subs = await sdb.watch(onbatch)
+
+  const quick_actions_el = await quick_actions(subs[0], quick_actions_protocol)
+  quick_actions_placeholder.replaceWith(quick_actions_el)
+
+  const actions_el = await actions(subs[1], actions_protocol)
+  actions_el.classList.add('hide')
+  actions_placeholder.replaceWith(actions_el)
+
+  const steps_wizard_el = await steps_wizard(subs[2], steps_wizard_protocol)
+  steps_wizard_el.classList.add('hide')
+  steps_wizard_placeholder.replaceWith(steps_wizard_el)
+
+  const form_input_elements = {}
+
+  for (const [component_name, component_fn] of Object.entries(component_modules)) {
+    const index = get_form_input_component_index(component_name)
+    const el = await component_fn(subs[index], form_input_protocol(component_name))
+    el.classList.add('hide')
+    form_input_elements[component_name] = el
+    form_input_placeholder.parentNode.insertBefore(el, form_input_placeholder)
+  }
+
+  form_input_placeholder.remove()
+
+  return el
+
+  // --- Internal Functions ---
+  async function onbatch(batch) {
+    for (const { type, paths } of batch) {
+      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      const func = on[type] || fail
+      func(data, type)
+    }
+  }
+
+  function fail(data, type) {
+    throw new Error('invalid message', { cause: { data, type } })
+  }
+
+  function inject(data) {
+    style.replaceChildren((() => {
+      return document.createElement('style').textContent = data[0]
+    })())
+  }
+
+  function onvariables(data) {
+    const vars = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
+    variables = vars['change_path']
+    if (_.send_steps_wizard)
+      _.send_steps_wizard({ type: "init_data", data: variables })
+  }
+
+  function toggle_view(el, show) {
+    el.classList.toggle('hide', !show)
+  }
+
+  function steps_toggle_view(display) {
+    toggle_view(steps_wizard_el, display === 'block')
+  }
+
+  function actions_toggle_view(display) {
+    toggle_view(actions_el, display === 'block')
+  }
+
+  function form_input_protocol(component_name) {
+    return function (send) {
+      _.send_form_input[component_name] = send
+      return function on({ type, data }) {
+        if (type === 'action_submitted') {
+          const step = variables[data?.index]
+          Object.assign(step, {
+            is_completed: true,
+            status: 'completed',
+            data: data?.value
+          })
+          drive.put('variables/program.json', { change_path: variables })
+        }
+      }
+    }
+  }
+
+  function steps_wizard_protocol(send) {
+    _.send_steps_wizard = send
+    return on
+    function on({ type, data }) {
+      if (type === 'step_clicked') {
+        console.log('step clicked data---------', type, data)
+        _.send_quick_actions({
+          type: 'update_steps',
+          data: {
+            current_step: data?.index + 1,
+            total_steps: data?.total_steps
+          }
+        })
+        
+        render_form_component(data.component)
+        const send = _.send_form_input[data.component]
+        if (send) send({ type: 'step_data', data })
+      }
+    }
+  }
+
+  function render_form_component(component_name) {
+    for (const name in form_input_elements) {
+      toggle_view(form_input_elements[name], name === component_name)
+    }
+  }
+
+  function get_form_input_component_index(component) {
+    const { _: components } = fallback_module()
+    return Object.keys(components).indexOf(component)
+  }
+
+  function actions_protocol(send) {
+    _.send_actions = send
+    return on
+    function on({ type, data }) {
+      _.send_quick_actions({
+        type,
+        data: {
+          ...data,
+          total_steps: variables.length
+        }
+      })
+      _.send_steps_wizard({ type: 'init_data', data: variables })
+      steps_toggle_view('block')
+
+      // render_form_component(data.component)
+      // const send = _.send_form_input[data.component]
+      // if (send) send({ type: 'step_data', data })
+
+      actions_toggle_view('none')
+    }
+  }
+
+  function quick_actions_protocol(send) {
+    _.send_quick_actions = send
+    return on
+    function on({ type, data }) {
+      on_quick_actions_message({ type, data })
+    }
+  }
+
+  function on_quick_actions_message({ type, data }) {
+    if (type == 'display_actions') {
+      actions_toggle_view(data)
+      if (data === 'none') {
+        steps_toggle_view(data)
+        for (const el of Object.values(form_input_elements)) {
+          toggle_view(el, false)
+        }
+        cleanup()
+      }
+    } else if (type == 'action_submitted') {
+      const is_completed = variables[data?.total_steps - 1]?.is_completed
+      if (is_completed) {
+        alert(JSON.stringify(variables.map(step => step.data), null, 2))
+        _.send_quick_actions?.({ type: 'deactivate_input_field' })
+      }
+    }
+  }
+
+  function cleanup() {
+    const cleaned = variables.map(step => ({
+      ...step,
+      is_completed: false,
+      data: ''
+    }))
+    drive.put('variables/program.json', { change_path: cleaned })
+  }
+}
+
+// --- Fallback Module ---
+function fallback_module() {
+  return {
+    api: fallback_instance,
+    _: {
+      'quick_actions': { $: '' },
+      'actions': { $: '' },
+      'steps_wizard': { $: '' },
+      'form_input': { $: '' },
+      'input_test': { $: '' }
+    }
+  }
+
+  function fallback_instance() {
+    return {
+      _: {
+        'quick_actions': {
+          0: '',
+          mapping: {
+            'style': 'style',
+            'icons': 'icons',
+            'actions': 'actions',
+            'hardcons': 'hardcons'
+          }
+        },
+        'actions': {
+          0: '',
+          mapping: {
+            'style': 'style',
+            'actions': 'actions',
+            'icons': 'icons',
+            'hardcons': 'hardcons'
+          }
+        },
+        'steps_wizard': {
+          0: '',
+          mapping: {
+            'style': 'style',
+            'variables': 'variables'
+          }
+        },
+        'form_input': {
+          0: '',
+          mapping: {
+            'style': 'style'
+          }
+        },
+        'input_test': {
+          0: '',
+          mapping: {
+            'style': 'style'
+          }
+        }
+      },
+      drive: {
+        'style/': {
+          'program.css': { '$ref': 'program.css' }
+        },
+        'variables/': {
+          'program.json': { '$ref': 'program.json' }
+        }
+      }
+    }
+  }
+}
+
+}).call(this)}).call(this,"/src/node_modules/program/program.js")
+},{"STATE":1,"actions":3,"form_input":5,"input_test":7,"quick_actions":10,"steps_wizard":13}],10:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1470,6 +2020,11 @@ async function quick_actions(opts, protocol) {
   function onmessage ({ type, data }) {
     if (type === 'selected_action') {
       select_action(data)
+    } else if (type === 'update_steps') {
+      current_step.textContent = data.current_step
+      selected_action.current_step = data.current_step
+    } else if (type === 'deactivate_input_field') {
+      deactivate_input_field()
     }
   }
   function activate_input_field() {
@@ -1488,12 +2043,6 @@ async function quick_actions(opts, protocol) {
     if (selected_action) {
       console.log('Selected action submitted:', selected_action)
       _.up({ type: 'action_submitted', data: selected_action })
-      const nextStep = ++selected_action.current_step
-      current_step.textContent = nextStep
-
-      if (nextStep > selected_action.total_steps) {
-        deactivate_input_field()
-      }
     }
   }
   function oninput(e) {
@@ -1523,7 +2072,7 @@ async function quick_actions(opts, protocol) {
       slash_prefix.style.display = 'inline'
       command_text.style.display = 'inline'
       command_text.textContent = `#${selected_action.action}`
-      current_step.textContent = selected_action.current_step
+      current_step.textContent = selected_action?.current_step || 1
       total_steps.textContent = selected_action.total_steps
       step_display.style.display = 'inline-flex'
       
@@ -1807,7 +2356,7 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/quick_actions/quick_actions.js")
-},{"STATE":1}],8:[function(require,module,exports){
+},{"STATE":1}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -2089,7 +2638,7 @@ function fallback_module(){
   }
 }
 }).call(this)}).call(this,"/src/node_modules/quick_editor.js")
-},{"STATE":1}],9:[function(require,module,exports){
+},{"STATE":1}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -2420,38 +2969,35 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/space.js")
-},{"STATE":1,"actions":3,"console_history":4,"graph_explorer":5,"tabbed_editor":11}],10:[function(require,module,exports){
+},{"STATE":1,"actions":3,"console_history":4,"graph_explorer":6,"tabbed_editor":14}],13:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 
-const quick_actions = require('quick_actions')
-const actions = require('actions')
-
 module.exports = steps_wizard
 
-async function steps_wizard (opts) {
+async function steps_wizard (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const {drive} = sdb
   
   const on = {
-    style: inject,
-    variables: onvariables,
+    style: inject
   }
 
   let variables = []
-  let current_step = 1;
 
-  let _ = {send_quick_actions: null}
+  let _ = null
+  if(protocol){
+    send = protocol(msg => onmessage(msg))
+    _ = { up: send }
+  }
 
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
   <div class="steps-wizard main">
-    <div class="actions"></div>
-    <div class="steps-slot hide"></div>
-    <div class="quick-actions"></div>
+    <div class="steps-slot"></div>
   </div>
   <style>
   </style>
@@ -2459,19 +3005,24 @@ async function steps_wizard (opts) {
 
   const style = shadow.querySelector('style')
   const steps_entries = shadow.querySelector('.steps-slot')
-  const quick_actions_placeholder = shadow.querySelector('.quick-actions')
-  const actions_placeholder = shadow.querySelector('.actions')
-
+  
   const subs = await sdb.watch(onbatch)
 
-  const quick_actions_el = await quick_actions(subs[0], quick_actions_protocol)
-  quick_actions_placeholder.replaceWith(quick_actions_el)
-
-  const actions_el = await actions(subs[1], actions_protocol)
-  actions_el.classList.add('hide')
-  actions_placeholder.replaceWith(actions_el)
+  // for demo purpose
+  render_steps([
+    {name: "Optional Step", "type": "optional", "is_completed": false, "component": "form_input", "status": "default", "data": ""},
+	  {name: "Step 2", "type": "mandatory", "is_completed": false, "component": "form_input", "status": "default", "data": ""}
+  ])
 
   return el
+  
+  function onmessage ({ type, data }) {
+    console.log('steps_ data', type, data)
+    if (type === 'init_data') {
+      variables = data
+      render_steps(variables)
+    }
+  }
   
   function render_steps(steps) {
     if (!steps)
@@ -2480,55 +3031,42 @@ async function steps_wizard (opts) {
     steps_entries.innerHTML = '';
 
     steps.forEach((step, index) => {
-      const btn = document.createElement('button');
-      btn.className = 'step-button';
-      btn.textContent = step.name + (step.type === 'optional' ? ' *' : '');
-      btn.setAttribute('data-step', index + 1);
+      const btn = document.createElement('button')
+      btn.className = 'step-button'
+      btn.textContent = step.name + (step.type === 'optional' ? ' *' : '')
+      btn.setAttribute('data-step', index + 1)
 
-      const accessible = can_access(index, steps);
+      const accessible = can_access(index, steps)
 
-      let status = 'default';
-      if (!accessible) status = 'disabled';
-      else if (step.is_completed) status = 'completed';
-      else if (step.status === 'error') status = 'error';
-      else if (step.type === 'optional') status = 'optional';
+      let status = 'default'
+      if (!accessible) status = 'disabled'
+      else if (step.is_completed) status = 'completed'
+      else if (step.status === 'error') status = 'error'
+      else if (step.type === 'optional') status = 'optional'
 
-      btn.classList.add(`step-${status}`);
-      btn.disabled = (status === 'disabled');
+      btn.classList.add(`step-${status}`)
+      btn.disabled = (status === 'disabled')
 
-      if (accessible) {
-        current_step = index + 1;
-      }
-
-      btn.onclick = () => {
+      btn.onclick = async () => {
         if (!btn.disabled) {
-          console.log('Clicked:', step);
+          console.log('Clicked:', step)
+            _?.up({type: 'step_clicked', data: {...step, index, total_steps: steps.length}})
         }
       };
 
-      steps_entries.appendChild(btn);
+      steps_entries.appendChild(btn)
     });
-
-    if (_.send_quick_actions) {
-      _.send_quick_actions({
-        type: 'update_steps',
-        data: {
-          current_step: current_step,
-          total_steps: steps.length
-        }
-      });
-    }
     
   }
 
   function can_access(index, steps) {
     for (let i = 0; i < index; i++) {
       if (!steps[i].is_completed && steps[i].type !== 'optional') {
-        return false;
+        return false
       }
     }
 
-    return true;
+    return true
   }
 
   async function onbatch(batch) {
@@ -2544,137 +3082,29 @@ async function steps_wizard (opts) {
       return document.createElement('style').textContent = data[0]
     })())
   }
-
-  function onvariables (data) {
-    const vars = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
-    variables = vars['change_path'] 
-    render_steps(variables);
-  }
-
-
-  function cleanup () {
-    const cleaned = variables.map(step => ({
-      ...step,
-      is_completed: false
-    }));
-
-    drive.put('variables/steps_wizard.json', { change_path: cleaned });
-  }
-  // ---- Toggle Views ----
-  function toggle_view(el, show) {
-    el.classList.toggle('hide', !show);
-  }
-
-  function steps_toggle_view(display) {
-    toggle_view(steps_entries, display === 'block');
-  }
-
-  function actions_toggle_view(display) {
-    toggle_view(actions_el, display === 'block');
-  }
-
-  // ---- Protocols ----
-  function actions_protocol (send) {
-    _.send_actions = send
-    return on
-    function on ({ type, data }) { 
-      console.log('actions data', type, data)
-      _.send_quick_actions({
-        type,
-        data: {
-        ...data,
-        current_step: current_step,
-        total_steps: variables.length
-        }
-      })
-      
-      steps_toggle_view('block')
-      actions_toggle_view('hide')
-    }
-  }
-
-  function quick_actions_protocol (send) {
-    _.send_quick_actions = send
-    return on
-    function on ({ type, data }) {
-      onmessage({type, data})
-    }
-  }
-  
-  function onmessage ({ type, data }) {
-    if (type == 'display_actions') {
-      actions_toggle_view(data)
-      if (data === 'none') {
-        steps_toggle_view(data)
-        cleanup()
-      }
-    } else if (type == 'action_submitted') {
-      const step = variables[data.current_step - 1]
-      Object.assign(step, {
-        is_completed: true,
-        status: 'completed'
-      })
-      drive.put('variables/steps_wizard.json', {change_path : variables})
-    }
-  }
-
+ 
 }
-
-
 
 function fallback_module () {
   return {
-    api: fallback_instance,
-    _: {
-      'quick_actions': {
-        $: ''
-      },
-      'actions': {
-        $: ''
-      },
-    }
+    api: fallback_instance
   }
 
   function fallback_instance () {
     return {
-      _: {
-        'quick_actions': {
-          0: '',
-          mapping: {
-            'style': 'style',
-            'icons': 'icons',
-            'actions': 'actions',
-            'hardcons': 'hardcons'
-          }
-        },
-        'actions': {
-          0: '',
-          mapping: {
-            'style': 'style',
-            'actions': 'actions',
-            'icons': 'icons',
-            'hardcons': 'hardcons'
-          }
-        },
-      },
       drive: {
         'style/': {
           'stepswizard.css': {
             '$ref': 'stepswizard.css' 
           }
-        },
-        'variables/': {
-          'steps_wizard.json': {
-            '$ref': 'steps_wizard.json'
-          }
-        },
+        }
       }
     }
   }
 }
 
 }).call(this)}).call(this,"/src/node_modules/steps_wizard/steps_wizard.js")
-},{"STATE":1,"actions":3,"quick_actions":7}],11:[function(require,module,exports){
+},{"STATE":1}],14:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3068,7 +3498,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor/tabbed_editor.js")
-},{"STATE":1}],12:[function(require,module,exports){
+},{"STATE":1}],15:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3280,7 +3710,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/tabs.js")
-},{"STATE":1}],13:[function(require,module,exports){
+},{"STATE":1}],16:[function(require,module,exports){
 (function (__filename){(function (){
 const state = require('STATE')
 const state_db = state(__filename)
@@ -3463,7 +3893,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/tabsbar/tabsbar.js")
-},{"STATE":1,"tabs":12,"task_manager":14}],14:[function(require,module,exports){
+},{"STATE":1,"tabs":15,"task_manager":17}],17:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3556,7 +3986,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager.js")
-},{"STATE":1}],15:[function(require,module,exports){
+},{"STATE":1}],18:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3714,7 +4144,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/taskbar.js")
-},{"STATE":1,"action_bar":2,"tabsbar":13}],16:[function(require,module,exports){
+},{"STATE":1,"action_bar":2,"tabsbar":16}],19:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3850,7 +4280,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/theme_widget.js")
-},{"STATE":1,"space":9,"taskbar":15}],17:[function(require,module,exports){
+},{"STATE":1,"space":12,"taskbar":18}],20:[function(require,module,exports){
 const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/main/'
 const init_url = location.hash === '#dev' ? 'web/init.js' : prefix + 'src/node_modules/init.js'
 const args = arguments
@@ -3871,7 +4301,7 @@ fetch(init_url, fetch_opts).then(res => res.text()).then(async source => {
   require('./page') // or whatever is otherwise the main entry of our project
 })
 
-},{"./page":18}],18:[function(require,module,exports){
+},{"./page":21}],21:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
@@ -3894,6 +4324,7 @@ const task_manager = require('../src/node_modules/task_manager')
 const quick_actions = require('../src/node_modules/quick_actions')
 const graph_explorer = require('../src/node_modules/graph_explorer')
 const editor = require('../src/node_modules/quick_editor')
+const program = require('../src/node_modules/program')
 const steps_wizard = require('../src/node_modules/steps_wizard')
 
 const imports = {
@@ -3909,6 +4340,7 @@ const imports = {
   task_manager,
   quick_actions,
   graph_explorer,
+  program,
   steps_wizard,
 }
 config().then(() => boot({ sid: '' }))
@@ -4170,7 +4602,8 @@ function fallback_module () {
     '../src/node_modules/task_manager',
     '../src/node_modules/quick_actions',
     '../src/node_modules/graph_explorer',
-    '../src/node_modules/steps_wizard'
+    '../src/node_modules/program',
+    '../src/node_modules/steps_wizard',
   ]
   const subs = {}
   names.forEach(subgen)
@@ -4184,11 +4617,18 @@ function fallback_module () {
       'style': 'style'
     }
   }
-  subs['../src/node_modules/steps_wizard'] = {
+  subs['../src/node_modules/program'] = {
     $: '',
     0: '',
     mapping: {
       'variables': 'variables',
+      'style': 'style'
+    }
+  }
+  subs['../src/node_modules/steps_wizard'] = {
+    $: '',
+    0: '',
+    mapping: {
       'style': 'style'
     }
   }
@@ -4414,4 +4854,4 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/actions":3,"../src/node_modules/console_history":4,"../src/node_modules/graph_explorer":5,"../src/node_modules/menu":6,"../src/node_modules/quick_actions":7,"../src/node_modules/quick_editor":8,"../src/node_modules/space":9,"../src/node_modules/steps_wizard":10,"../src/node_modules/tabbed_editor":11,"../src/node_modules/tabs":12,"../src/node_modules/tabsbar":13,"../src/node_modules/task_manager":14,"../src/node_modules/taskbar":15,"../src/node_modules/theme_widget":16}]},{},[17]);
+},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/actions":3,"../src/node_modules/console_history":4,"../src/node_modules/graph_explorer":6,"../src/node_modules/menu":8,"../src/node_modules/program":9,"../src/node_modules/quick_actions":10,"../src/node_modules/quick_editor":11,"../src/node_modules/space":12,"../src/node_modules/steps_wizard":13,"../src/node_modules/tabbed_editor":14,"../src/node_modules/tabs":15,"../src/node_modules/tabsbar":16,"../src/node_modules/task_manager":17,"../src/node_modules/taskbar":18,"../src/node_modules/theme_widget":19}]},{},[20]);
