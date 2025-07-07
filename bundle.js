@@ -899,16 +899,16 @@ async function graph_explorer(opts) {
     const old_view = [...view]
     const old_scroll_top = scroll_value
 
-    view = build_view_recursive(
-      '/',
-      '',
-      0,
-      true,
-      false,
-      [],
+    view = build_view_recursive({
+      base_path: '/',
+      parent_instance_path: '',
+      depth: 0,
+      is_last: true,
+      is_hub: false,
+      parent_pipe_trail: [],
       instance_states,
       all_entries
-    )
+    })
 
     let focal_index = -1
     if (focal_instance_path) {
@@ -950,16 +950,18 @@ async function graph_explorer(opts) {
     })
   }
 
-  function build_view_recursive(
-    base_path,
-    parent_instance_path,
-    depth,
-    is_last,
-    is_hub,
-    parent_pipe_trail,
-    instance_states,
-    all_entries
-  ) {
+  function build_view_recursive(args) {
+    const {
+      base_path,
+      parent_instance_path,
+      depth,
+      is_last,
+      is_hub,
+      parent_pipe_trail,
+      instance_states,
+      all_entries
+    } = args
+
     const instance_path = `${parent_instance_path}|${base_path}`
     const entry = all_entries[base_path]
     if (!entry) return []
@@ -981,16 +983,16 @@ async function graph_explorer(opts) {
     if (state.expanded_hubs && entry.hubs) {
       entry.hubs.forEach((hub_path, i, arr) => {
         current_view = current_view.concat(
-          build_view_recursive(
-            hub_path,
-            instance_path,
-            depth + 1,
-            i === arr.length - 1,
-            true,
-            children_pipe_trail,
+          build_view_recursive({
+            base_path: hub_path,
+            parent_instance_path: instance_path,
+            depth: depth + 1,
+            is_last: i === arr.length - 1,
+            is_hub: true,
+            parent_pipe_trail: children_pipe_trail,
             instance_states,
             all_entries
-          )
+          })
         )
       })
     }
@@ -1007,16 +1009,16 @@ async function graph_explorer(opts) {
     if (state.expanded_subs && entry.subs) {
       entry.subs.forEach((sub_path, i, arr) => {
         current_view = current_view.concat(
-          build_view_recursive(
-            sub_path,
-            instance_path,
-            depth + 1,
-            i === arr.length - 1,
-            false,
-            children_pipe_trail,
+          build_view_recursive({
+            base_path: sub_path,
+            parent_instance_path: instance_path,
+            depth: depth + 1,
+            is_last: i === arr.length - 1,
+            is_hub: false,
+            parent_pipe_trail: children_pipe_trail,
             instance_states,
             all_entries
-          )
+          })
         )
       })
     }
