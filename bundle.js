@@ -828,7 +828,8 @@ async function graph_explorer(opts) {
   const { sdb } = await get(opts.sid)
   const { drive } = sdb
 
-  let scroll_value = 0
+  let vertical_scroll_value = 0
+  let horizontal_scroll_value = 0
 
   const on = {
     entries: on_entries,
@@ -838,7 +839,8 @@ async function graph_explorer(opts) {
   const el = document.createElement('div')
   el.className = 'graph-explorer-wrapper'
   el.onscroll = () => {
-    scroll_value = el.scrollTop
+    vertical_scroll_value = el.scrollTop
+    horizontal_scroll_value = el.scrollLeft
   }
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `<div class="graph-container"></div>`
@@ -897,13 +899,14 @@ async function graph_explorer(opts) {
 
   function build_and_render_view(focal_instance_path = null) {
     const old_view = [...view]
-    const old_scroll_top = scroll_value
+    const old_scroll_top = vertical_scroll_value
+    const old_scroll_left = horizontal_scroll_value
 
     view = build_view_recursive({
       base_path: '/',
       parent_instance_path: '',
       depth: 0,
-      is_last: true,
+      is_last_sub : true,
       is_hub: false,
       parent_pipe_trail: [],
       instance_states,
@@ -947,20 +950,20 @@ async function graph_explorer(opts) {
 
     requestAnimationFrame(() => {
       el.scrollTop = new_scroll_top
+      el.scrollLeft = old_scroll_left
     })
   }
 
-  function build_view_recursive(args) {
-    const {
-      base_path,
-      parent_instance_path,
-      depth,
-      is_last,
-      is_hub,
-      parent_pipe_trail,
-      instance_states,
-      all_entries
-    } = args
+  function build_view_recursive({
+    base_path,
+    parent_instance_path,
+    depth,
+    is_last_sub,
+    is_hub,
+    parent_pipe_trail,
+    instance_states,
+    all_entries
+  }) {
 
     const instance_path = `${parent_instance_path}|${base_path}`
     const entry = all_entries[base_path]
@@ -974,8 +977,19 @@ async function graph_explorer(opts) {
     }
     const state = instance_states[instance_path]
     const children_pipe_trail = [...parent_pipe_trail]
+    let last_pipe = null
+
     if (depth > 0) {
-      children_pipe_trail.push(!is_last)
+      if (is_hub) {
+        last_pipe = [...parent_pipe_trail]
+        if (is_last_sub) { 
+          children_pipe_trail.pop()
+          children_pipe_trail.push(is_last_sub)
+          last_pipe.pop()
+          last_pipe.push(true)
+        }
+      }
+      children_pipe_trail.push(!is_last_sub || is_hub)
     }
 
     let current_view = []
@@ -987,7 +1001,7 @@ async function graph_explorer(opts) {
             base_path: hub_path,
             parent_instance_path: instance_path,
             depth: depth + 1,
-            is_last: i === arr.length - 1,
+            is_last_sub : i === arr.length - 1,
             is_hub: true,
             parent_pipe_trail: children_pipe_trail,
             instance_states,
@@ -1001,9 +1015,9 @@ async function graph_explorer(opts) {
       base_path,
       instance_path,
       depth,
-      is_last,
+      is_last_sub,
       is_hub,
-      pipe_trail: parent_pipe_trail
+      pipe_trail: (is_hub && is_last_sub) ? last_pipe : parent_pipe_trail
     })
 
     if (state.expanded_subs && entry.subs) {
@@ -1013,7 +1027,7 @@ async function graph_explorer(opts) {
             base_path: sub_path,
             parent_instance_path: instance_path,
             depth: depth + 1,
-            is_last: i === arr.length - 1,
+            is_last_sub: i === arr.length - 1,
             is_hub: false,
             parent_pipe_trail: children_pipe_trail,
             instance_states,
@@ -1078,14 +1092,14 @@ async function graph_explorer(opts) {
     }
   }
 
-  function get_prefix(is_last, has_subs, state, is_hub) {
+  function get_prefix(is_last_sub, has_subs, state, is_hub) {
     const { expanded_subs, expanded_hubs } = state
     if (is_hub) {
       if (expanded_subs && expanded_hubs) return '┌┼'
       if (expanded_subs) return '┌┬'
       if (expanded_hubs) return '┌┴'
       return '┌─'
-    } else if (is_last) {
+    } else if (is_last_sub) {
       if (expanded_subs && expanded_hubs) return '└┼'
       if (expanded_subs) return '└┬'
       if (expanded_hubs) return '└┴'
@@ -1098,7 +1112,7 @@ async function graph_explorer(opts) {
     }
   }
 
-  function create_node({ base_path, instance_path, depth, is_last, is_hub, pipe_trail }) {
+  function create_node({ base_path, instance_path, depth, is_last_sub, is_hub, pipe_trail }) {
     const entry = all_entries[base_path]
     const state = instance_states[instance_path]
     const el = document.createElement('div')
@@ -1124,7 +1138,7 @@ async function graph_explorer(opts) {
       return el
     }
 
-    const prefix_symbol = get_prefix(is_last, has_subs, state, is_hub)
+    const prefix_symbol = get_prefix(is_last_sub, has_subs, state, is_hub)
     const pipe_html = pipe_trail.map(should_pipe => `<span class=${should_pipe ? 'pipe' : 'blank'}>${should_pipe ? '│' : ' '}</span>`).join('')
     
     const prefix_class = (!has_hubs || base_path !== '/') ? 'prefix clickable' : 'prefix'
