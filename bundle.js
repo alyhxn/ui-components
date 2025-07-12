@@ -175,7 +175,7 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/action_bar/action_bar.js")
-},{"STATE":1,"quick_actions":10}],3:[function(require,module,exports){
+},{"STATE":1,"quick_actions":7}],3:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -820,215 +820,55 @@ function fallback_module () {
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
+const { get } = statedb(fallback_module)
 
-module.exports = form_input
-async function form_input (opts, protocol) {
-  const { id, sdb } = await get(opts.sid)
-  const {drive} = sdb
-	
-	const on = {
-    style: inject,
-  }
+module.exports = graph_explorer
 
-  let current_step = null
-	
-	if(protocol){
-    send = protocol(msg => onmessage(msg))
-    _ = { up: send }
-  }
-
-  const el = document.createElement('div')
-  const shadow = el.attachShadow({ mode: 'closed' })
-  shadow.innerHTML = `
-  <div class="input-display">
-    <div class='test'>
-      <input class="input-field" type="text" placeholder="Type to submit">
-    </div>
-  </div>
-  <style>
-  </style>`
-  const style = shadow.querySelector('style')
-  
-	const input_field_el = shadow.querySelector('.input-field')
-
-	input_field_el.oninput = function () {
-		if (this.value.length >= 10) {
-			_.up({
-        type: 'action_submitted',
-        data: {
-          value: this.value,
-          index: current_step?.index || 0
-        }
-      })
-			console.log('mark_as_complete')
-		}
-	}
-
-  const subs = await sdb.watch(onbatch)
-
-  
-  return el
-
-  async function onbatch(batch) {
-    for (const { type, paths } of batch){
-      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
-      const func = on[type] || fail
-      func(data, type)
-    }
-  }
-
-  function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
-
-  function inject (data) {
-    style.replaceChildren((() => {
-      return document.createElement('style').textContent = data[0]
-    })())
-  }
-
-	function onmessage ({ type, data }) {
-    console.log('message from form_input', type, data)
-    if (type === 'step_data') {
-      current_step = data
-      console.log('message from form_input', input_field_el, input_field_el.value)
-      input_field_el.value = data?.data || ''
-    }
-  }
-
-}
-function fallback_module () {
-  return {
-    api: fallback_instance,
-  }
-  function fallback_instance () {
-    return {
-      drive: {
-        'style/': {
-          'theme.css': {
-            raw: `
-            .input-display {
-							background: #131315;
-              border-radius: 16px;
-              border: 1px solid #3c3c3c;
-							display: flex;
-							flex: 1;
-							align-items: center;
-							padding: 0 12px;
-							min-height: 32px;
-            }
-						.input-display:focus-within {
-							border-color: #4285f4;
-							background: #1a1a1c;
-            }	
-						.input-field {
-							flex: 1;
-							min-height: 32px;
-							background: transparent;
-							border: none;
-							color: #e8eaed;
-							padding: 0 12px;
-							font-size: 14px;
-							outline: none;
-						}
-						.input-field::placeholder {
-							color: #a6a6a6;
-						}
-						`
-          }
-        }
-      }
-    }
-  }
-}
-
-}).call(this)}).call(this,"/src/node_modules/form_input.js")
-},{"STATE":1}],6:[function(require,module,exports){
-(function (__filename){(function (){
-const STATE = require('STATE')
-const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
-
-module.exports = component
-
-async function component (opts, protocol) {
+async function graph_explorer(opts) {
   const { sdb } = await get(opts.sid)
   const { drive } = sdb
+
+  let vertical_scroll_value = 0
+  let horizontal_scroll_value = 0
+
   const on = {
-    style: inject_style,
     entries: on_entries,
-    icons: iconject
+    style: inject_style
   }
 
   const el = document.createElement('div')
+  el.className = 'graph-explorer-wrapper'
+  el.onscroll = () => {
+    vertical_scroll_value = el.scrollTop
+    horizontal_scroll_value = el.scrollLeft
+  }
   const shadow = el.attachShadow({ mode: 'closed' })
-  shadow.innerHTML = `
-  <div class="graph-explorer">
-    <div class="explorer-container"></div>
-  </div>`
+  shadow.innerHTML = `<div class="graph-container"></div>`
+  const container = shadow.querySelector('.graph-container')
 
-  const container = shadow.querySelector('.explorer-container')
-
-  /******************************************************************************
-  Variables for entries and view management. To get data from the state drive.
-  ******************************************************************************/
-  let entries = []
+  let all_entries = {}
   let view = []
-  let view_num = 0
-  let expanded_nodes = new Set()
-  let init = false
+  const instance_states = {}
 
-  /******************************************************************************
-  Intersection Observer to track which nodes are currently in view.
-  //TODO: Lazy loading of nodes based on scroll visibility.
-  ******************************************************************************/
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      const node_id = entry.target.dataset.path
-      if (entry.isIntersecting) {
-        if (!view.includes(node_id)) {
-          view.push(node_id)
-        }
-      } else {
-        const index = view.indexOf(node_id)
-        if (index !== -1) {
-          view.splice(index, 1)
-        }
-      }
-    })
-  }, {
-    root: container,
-    threshold: 0.1
+  let start_index = 0
+  let end_index = 0
+  const chunk_size = 50
+  const max_rendered_nodes = chunk_size * 3
+  const node_height = 22
+
+  const top_sentinel = document.createElement('div')
+  const bottom_sentinel = document.createElement('div')
+  top_sentinel.className = 'sentinel'
+  bottom_sentinel.className = 'sentinel'
+
+  const observer = new IntersectionObserver(handle_sentinel_intersection, {
+    root: el,
+    threshold: 0
   })
 
-  function calculate_view_num() {
-    const container_height = container.clientHeight
-    const node_height = 24
-    view_num = Math.ceil(container_height / node_height) * 3 || 30
-    // console.log('view:', view)
-  }
-
-
-  const subs = await sdb.watch(onbatch)
-
-  /******************************************************************************
-  Resize Observer
-  ******************************************************************************/
-  const resize_observer = new ResizeObserver(() => {
-    calculate_view_num()
-    render_visible_nodes()
-  })
-  resize_observer.observe(container)
-
-  let send = null
-  if (protocol) {
-    send = protocol(msg => onmessage(msg))
-  }
+  await sdb.watch(onbatch)
 
   return el
-
-  function onmessage(msg) {
-    // console.log('Graph Explorer received message:', msg)
-  }
 
   async function onbatch(batch) {
     for (const { type, paths } of batch) {
@@ -1036,145 +876,299 @@ async function component (opts, protocol) {
       const func = on[type] || fail
       func(data, type)
     }
-    if (!init && entries.length > 0) {
-      calculate_view_num()
-      render_visible_nodes()
-      init = true
+  }
+
+  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+
+  function on_entries(data) {
+    all_entries = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
+    const root_path = '/'
+    if (all_entries[root_path]) {
+      if (!instance_states[root_path]) {
+        instance_states[root_path] = { expanded_subs: true, expanded_hubs: false }
+      }
+      build_and_render_view()
     }
   }
 
-  function fail (data, type) { 
-    throw new Error('invalid message', { cause: { data, type } }) 
-  }
-
-  function on_entries(data) {
-    entries = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
-  }
-  function iconject(data) {
-    icons = data
-  }
   function inject_style(data) {
     const sheet = new CSSStyleSheet()
-    sheet.replaceSync(data)
+    sheet.replaceSync(data[0])
     shadow.adoptedStyleSheets = [sheet]
   }
-  /******************************************************************************
-  Function for the rendering based on the visible nodes.
-  ******************************************************************************/
-  function render_visible_nodes() {
+
+  function build_and_render_view(focal_instance_path = null) {
+    const old_view = [...view]
+    const old_scroll_top = vertical_scroll_value
+    const old_scroll_left = horizontal_scroll_value
+
+    view = build_view_recursive({
+      base_path: '/',
+      parent_instance_path: '',
+      depth: 0,
+      is_last_sub : true,
+      is_hub: false,
+      parent_pipe_trail: [],
+      instance_states,
+      all_entries
+    })
+
+    let focal_index = -1
+    if (focal_instance_path) {
+      focal_index = view.findIndex(
+        node => node.instance_path === focal_instance_path
+      )
+    }
+    if (focal_index === -1) {
+      focal_index = Math.floor(old_scroll_top / node_height)
+    }
+
+    const old_focal_node = old_view[focal_index]
+    let new_scroll_top = old_scroll_top
+
+    if (old_focal_node) {
+      const old_focal_instance_path = old_focal_node.instance_path
+      const new_focal_index = view.findIndex(
+        node => node.instance_path === old_focal_instance_path
+      )
+      if (new_focal_index !== -1) {
+        const scroll_diff = (new_focal_index - focal_index) * node_height
+        new_scroll_top = old_scroll_top + scroll_diff
+      }
+    }
+
+    start_index = Math.max(0, focal_index - Math.floor(chunk_size / 2))
+    end_index = start_index
+
     container.replaceChildren()
-    if (entries.length === 0) return
-    
-    const visible_entries = calculate_visible_entries()
-    visible_entries.forEach(entry => {
-      const node = create_node(entry)
-      // console.log(container, node)
-      container.appendChild(node)
-      observer.observe(node)
+    container.appendChild(top_sentinel)
+    container.appendChild(bottom_sentinel)
+    observer.observe(top_sentinel)
+    observer.observe(bottom_sentinel)
+
+    render_next_chunk()
+
+    requestAnimationFrame(() => {
+      el.scrollTop = new_scroll_top
+      el.scrollLeft = old_scroll_left
     })
   }
 
-  function calculate_visible_entries() {
-    const visible_entries = []
-    visible_entries.push(entries[0])
-    let queue = [...entries[0].subs.map(index => entries[index])]
-    
-    while (queue.length > 0 && visible_entries.length < view_num) {
-      const entry = queue.shift()
-      if (!entry) continue
-      visible_entries.push(entry)
+  function build_view_recursive({
+    base_path,
+    parent_instance_path,
+    depth,
+    is_last_sub,
+    is_hub,
+    parent_pipe_trail,
+    instance_states,
+    all_entries
+  }) {
 
-      const entry_path = get_full_path(entry)
-      if (expanded_nodes.has(entry_path) && entry.subs && entry.subs.length > 0) {
-        queue = [...entry.subs.map(index => entries[index]), ...queue]
+    const instance_path = `${parent_instance_path}|${base_path}`
+    const entry = all_entries[base_path]
+    if (!entry) return []
+
+    if (!instance_states[instance_path]) {
+      instance_states[instance_path] = {
+        expanded_subs: false,
+        expanded_hubs: false
       }
     }
-    
-    return visible_entries
-  }
-  /******************************************************************************
-  Create a node element for the explorer tree.
-  ******************************************************************************/
-  function create_node(entry) {
-    const node = document.createElement('div')
-    const depth = calculate_depth(entry.path)
-    const is_expanded = expanded_nodes.has(get_full_path(entry))
-    const has_children = entry.subs && entry.subs.length > 0
-    
-    let icon = get_icon_for_type(entry.type)
-    let prefix = create_tree_prefix(entry, depth, is_expanded, has_children)
-    
-    node.className = 'explorer-node'
-    node.dataset.path = get_full_path(entry)
-    node.dataset.index = entries.indexOf(entry)
-    node.style.paddingLeft = `${depth * 10}px`
-    
-    node.innerHTML = `
-      <span class="tree-prefix">${prefix}</span>
-      <span class="node-icon">${icon}</span>
-      <span class="node-name">${entry.name}</span>
-    `
-    
-    // Setup click handlers
-    const prefix_el = node.querySelector('.tree-prefix')
-    const icon_el = node.querySelector('.node-icon')
-    
-    if (has_children) {
-      prefix_el.onclick = null
-      //TODO: Add supernode support
-      icon_el.onclick = () => toggle_node(entry)
+    const state = instance_states[instance_path]
+    const children_pipe_trail = [...parent_pipe_trail]
+    let last_pipe = null
+
+    if (depth > 0) {
+      if (is_hub) {
+        last_pipe = [...parent_pipe_trail]
+        if (is_last_sub) { 
+          children_pipe_trail.pop()
+          children_pipe_trail.push(is_last_sub)
+          last_pipe.pop()
+          last_pipe.push(true)
+        }
+      }
+      children_pipe_trail.push(!is_last_sub || is_hub)
     }
-    
-    return node
+
+    let current_view = []
+
+    if (state.expanded_hubs && entry.hubs) {
+      entry.hubs.forEach((hub_path, i, arr) => {
+        current_view = current_view.concat(
+          build_view_recursive({
+            base_path: hub_path,
+            parent_instance_path: instance_path,
+            depth: depth + 1,
+            is_last_sub : i === arr.length - 1,
+            is_hub: true,
+            parent_pipe_trail: children_pipe_trail,
+            instance_states,
+            all_entries
+          })
+        )
+      })
+    }
+
+    current_view.push({
+      base_path,
+      instance_path,
+      depth,
+      is_last_sub,
+      is_hub,
+      pipe_trail: (is_hub && is_last_sub) ? last_pipe : parent_pipe_trail
+    })
+
+    if (state.expanded_subs && entry.subs) {
+      entry.subs.forEach((sub_path, i, arr) => {
+        current_view = current_view.concat(
+          build_view_recursive({
+            base_path: sub_path,
+            parent_instance_path: instance_path,
+            depth: depth + 1,
+            is_last_sub: i === arr.length - 1,
+            is_hub: false,
+            parent_pipe_trail: children_pipe_trail,
+            instance_states,
+            all_entries
+          })
+        )
+      })
+    }
+    return current_view
   }
 
-  // Toggle node expansion state
-  function toggle_node(entry) {
-    const path = get_full_path(entry)
-    
-    if (expanded_nodes.has(path)) {
-      expanded_nodes.delete(path)
-    } else {
-      expanded_nodes.add(path)
-    }
-    render_visible_nodes()
-    // console.log('view:', view)
-    // console.log('view:', view_num)
+  function handle_sentinel_intersection(entries) {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        if (entry.target === top_sentinel) render_prev_chunk()
+        else if (entry.target === bottom_sentinel) render_next_chunk()
+      }
+    })
   }
 
-  // Get appropriate icon for entry type
-  function get_icon_for_type(type) {
-    const type_icons = {
-      'root': '🌐',
-      'folder': '📁',
-      'file': '📄',
-      'html-file': '📄',
-      'js-file': '📄',
-      'css-file': '🖌️',
-      'json-file': '🎨'
+  function render_next_chunk() {
+    if (end_index >= view.length) return
+    const fragment = document.createDocumentFragment()
+    const next_end = Math.min(view.length, end_index + chunk_size)
+    for (let i = end_index; i < next_end; i++) {
+      fragment.appendChild(create_node(view[i]))
     }
-    
-    return type_icons[type] || '📄'
+    container.insertBefore(fragment, bottom_sentinel)
+    end_index = next_end
+    cleanup_dom(false)
   }
-  /******************************************************************************
-   Prefix creation for tree structure.
-   //TODO: Add support for different icons based on entry type.
-  /******************************************************************************/
-  function create_tree_prefix(entry, depth, is_expanded, has_children) {
-    if (depth === 0) return has_children ? (is_expanded ? '🪄┬' : '🪄┬') : '🪄─'
-    if (has_children) {
-      return is_expanded ? '├┬' : '├─'
+
+  function render_prev_chunk() {
+    if (start_index <= 0) return
+    const fragment = document.createDocumentFragment()
+    const prev_start = Math.max(0, start_index - chunk_size)
+    for (let i = prev_start; i < start_index; i++) {
+      fragment.appendChild(create_node(view[i]))
+    }
+    const old_scroll_height = container.scrollHeight
+    const old_scroll_top = el.scrollTop
+    container.insertBefore(fragment, top_sentinel.nextSibling)
+    start_index = prev_start
+    el.scrollTop = old_scroll_top + (container.scrollHeight - old_scroll_height)
+    cleanup_dom(true)
+  }
+
+  function cleanup_dom(is_scrolling_up) {
+    const rendered_count = end_index - start_index
+    if (rendered_count < max_rendered_nodes) return
+    const to_remove_count = rendered_count - max_rendered_nodes
+    if (is_scrolling_up) {
+      for (let i = 0; i < to_remove_count; i++) {
+        bottom_sentinel.previousElementSibling.remove()
+      }
+      end_index -= to_remove_count
     } else {
+      for (let i = 0; i < to_remove_count; i++) {
+        top_sentinel.nextElementSibling.remove()
+      }
+      start_index += to_remove_count
+    }
+  }
+
+  function get_prefix(is_last_sub, has_subs, state, is_hub) {
+    const { expanded_subs, expanded_hubs } = state
+    if (is_hub) {
+      if (expanded_subs && expanded_hubs) return '┌┼'
+      if (expanded_subs) return '┌┬'
+      if (expanded_hubs) return '┌┴'
+      return '┌─'
+    } else if (is_last_sub) {
+      if (expanded_subs && expanded_hubs) return '└┼'
+      if (expanded_subs) return '└┬'
+      if (expanded_hubs) return '└┴'
       return '└─'
+    } else {
+      if (expanded_subs && expanded_hubs) return '├┼'
+      if (expanded_subs) return '├┬'
+      if (expanded_hubs) return '├┴'
+      return '├─'
     }
   }
 
-  function calculate_depth(path) {
-    if (!path) return 0
-    return (path.match(/\//g) || []).length
+  function create_node({ base_path, instance_path, depth, is_last_sub, is_hub, pipe_trail }) {
+    const entry = all_entries[base_path]
+    const state = instance_states[instance_path]
+    const el = document.createElement('div')
+    el.className = `node type-${entry.type}`
+    el.dataset.instance_path = instance_path
+
+    const has_hubs = entry.hubs && entry.hubs.length > 0
+    const has_subs = entry.subs && entry.subs.length > 0
+    
+    if (depth) {
+      el.style.paddingLeft = '20px'
+    }
+
+    if (base_path === '/' && instance_path === '|/') {
+      const { expanded_subs } = state
+      const prefix_symbol = expanded_subs ? '🪄┬' : '🪄─'
+      const prefix_class = has_subs ? 'prefix clickable' : 'prefix'
+      el.innerHTML = `<span class="${prefix_class}">${prefix_symbol}</span><span class="name">/🌐</span>`
+      if (has_subs) {
+        el.querySelector('.prefix').onclick = () => toggle_subs(instance_path)
+        el.querySelector('.name').onclick = () => toggle_subs(instance_path)
+      }
+      return el
+    }
+
+    const prefix_symbol = get_prefix(is_last_sub, has_subs, state, is_hub)
+    const pipe_html = pipe_trail.map(should_pipe => `<span class=${should_pipe ? 'pipe' : 'blank'}>${should_pipe ? '│' : ' '}</span>`).join('')
+    
+    const prefix_class = (!has_hubs || base_path !== '/') ? 'prefix clickable' : 'prefix'
+    const icon_class = has_subs ? 'icon clickable' : 'icon'
+
+    el.innerHTML = `
+      <span class="indent">${pipe_html}</span>
+      <span class="${prefix_class}">${prefix_symbol}</span>
+      <span class="${icon_class}"></span>
+      <span class="name">${entry.name}</span>
+    `
+    if(has_hubs && base_path !== '/') el.querySelector('.prefix').onclick = () => toggle_hubs(instance_path)
+    if(has_subs) el.querySelector('.icon').onclick = () => toggle_subs(instance_path)
+    return el
   }
-  function get_full_path(entry) {
-    return entry.path + entry.name + '/'
+
+  function toggle_subs(instance_path) {
+    const state = instance_states[instance_path]
+    if (state) {
+      state.expanded_subs = !state.expanded_subs
+      build_and_render_view(instance_path)
+    }
+  }
+
+  function toggle_hubs(instance_path) {
+    const state = instance_states[instance_path]
+    if (state) {
+      state.expanded_hubs = !state.expanded_hubs
+      build_and_render_view(instance_path)
+    }
   }
 }
 
@@ -1182,73 +1176,56 @@ function fallback_module() {
   return {
     api: fallback_instance
   }
-  
   function fallback_instance() {
     return {
       drive: {
+        'entries/': {
+          'entries.json': { $ref: 'entries.json' }
+        },
         'style/': {
           'theme.css': {
             raw: `
-              .graph-explorer {
-                height: 300px;
-                overflow: auto;
-                font-family: monospace;
-                color: #eee;
-                background-color: #2d3440;
-                user-select: none;
-              }
-              
-              .explorer-container {
+              .graph-container {
+                color: #abb2bf;
+                background-color: #282c34;
                 padding: 10px;
-                height: 300px;
+                height: 500px; /* Or make it flexible */
+                overflow: auto;
               }
-              
-              .explorer-node {
+              .node {
                 display: flex;
                 align-items: center;
-                padding: 2px 0;
                 white-space: nowrap;
+                cursor: default;
+                height: 22px; /* Important for scroll calculation */
+              }
+              .indent {
+                display: flex;
+              }
+              .pipe {
+                text-align: center;
+              }
+              .blank {
+                width: 10px;
+                text-align: center;
+              }
+              .clickable {
                 cursor: pointer;
               }
-              
-              .explorer-node:hover {
-                background-color: rgba(255, 255, 255, 0.1);
-              }
-              
-              .tree-prefix {
-                margin-right: 4px;
-                opacity: 0.7;
-                cursor: pointer;
-              }
-              
-              .node-icon {
+              .prefix, .icon {
                 margin-right: 6px;
-                cursor: pointer;
               }
-              
-              .node-name {
-                overflow: hidden;
-                text-overflow: ellipsis;
-              }
+              .icon { display: inline-block; text-align: center; }
+              .name { flex-grow: 1; }
+              .node.type-root > .icon::before { content: '🌐'; }
+              .node.type-folder > .icon::before { content: '📁'; }
+              .node.type-html-file > .icon::before { content: '📄'; }
+              .node.type-js-file > .icon::before { content: '📜'; }
+              .node.type-css-file > .icon::before { content: '🎨'; }
+              .node.type-json-file > .icon::before { content: '📝'; }
+              .node.type-file > .icon::before { content: '📄'; }
+              .sentinel { height: 1px; }
             `
-          }
-        },
-        'entries/': {
-          'graph.json': {
-            '$ref': 'entries.json'
-          }
-        },
-        'icons/': {
-          'folder_icons.json': {
-            raw: `{
-              "root": "🌐",
-              "folder": "📁",
-              "file": "📄",
-              "html-file": "📄",
-              "js-file": "📄",
-              "css-file": "🖌️",
-              "json-file": "🎨"
-            }`
           }
         }
       }
@@ -1257,135 +1234,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/graph_explorer/graph_explorer.js")
-},{"STATE":1}],7:[function(require,module,exports){
-(function (__filename){(function (){
-const STATE = require('STATE')
-const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
-
-module.exports = input_test
-async function input_test (opts, protocol) {
-  const { id, sdb } = await get(opts.sid)
-  const {drive} = sdb
-	
-	const on = {
-    style: inject,
-  }
-
-  let current_step = null
-	
-	if(protocol){
-    send = protocol(msg => onmessage(msg))
-    _ = { up: send }
-  }
-
-  const el = document.createElement('div')
-  const shadow = el.attachShadow({ mode: 'closed' })
-  shadow.innerHTML = `
-	<div class='title'> Testing 2nd Type </div>
-  <div class="input-display">
-    <input class="input-field" type="text" placeholder="Type to submit">
-  </div>
-  <style>
-  </style>`
-  const style = shadow.querySelector('style')
-  
-	const input_field_el = shadow.querySelector('.input-field')
-
-	input_field_el.oninput = function () {
-		if (this.value.length >= 10) {
-			_.up({
-        type: 'action_submitted',
-        data: {
-          value: this.value,
-          index: current_step?.index || 0
-        }
-      })
-			console.log('mark_as_complete')
-		}
-	}
-
-  const subs = await sdb.watch(onbatch)
-
-  
-  return el
-
-  async function onbatch(batch) {
-    for (const { type, paths } of batch){
-      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
-      const func = on[type] || fail
-      func(data, type)
-    }
-  }
-
-  function fail(data, type) { throw new Error('invalid message', { cause: { data, type } }) }
-
-  function inject (data) {
-    style.replaceChildren((() => {
-      return document.createElement('style').textContent = data[0]
-    })())
-  }
-
-	function onmessage ({ type, data }) {
-    console.log('message from input_test', type, data)
-    if (type === 'step_data') {
-      current_step = data
-      input_field_el.value = data?.data || ''
-    }
-  }
-
-}
-function fallback_module () {
-  return {
-    api: fallback_instance,
-  }
-  function fallback_instance () {
-    return {
-      drive: {
-        'style/': {
-          'theme.css': {
-            raw: `
-						.title {
-							color: #e8eaed;
-							font-size: 18px;
-						}
-            .input-display {
-							background: #131315;
-              border-radius: 16px;
-              border: 1px solid #3c3c3c;
-							display: flex;
-							flex: 1;
-							align-items: center;
-							padding: 0 12px;
-							min-height: 32px;
-            }
-						.input-display:focus-within {
-							border-color: #4285f4;
-							background: #1a1a1c;
-            }	
-						.input-field {
-							flex: 1;
-							min-height: 32px;
-							background: transparent;
-							border: none;
-							color: #e8eaed;
-							padding: 0 12px;
-							font-size: 14px;
-							outline: none;
-						}
-						.input-field::placeholder {
-							color: #a6a6a6;
-						}
-						`
-          }
-        }
-      }
-    }
-  }
-}
-
-}).call(this)}).call(this,"/src/node_modules/input_test.js")
-},{"STATE":1}],8:[function(require,module,exports){
+},{"STATE":1}],6:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1640,303 +1489,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/menu.js")
-},{"STATE":1}],9:[function(require,module,exports){
-(function (__filename){(function (){
-const STATE = require('STATE')
-const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
-
-const quick_actions = require('quick_actions')
-const actions = require('actions')
-const form_input = require('form_input')
-const steps_wizard = require('steps_wizard')
-const input_test = require('input_test')
-
-const component_modules = {
-  'form_input': form_input,
-  'input_test': input_test
-  // Add more form input components here if needed
-}
-
-module.exports = program
-
-async function program(opts) {
-  const { id, sdb } = await get(opts.sid)
-  const { drive } = sdb
-
-  const on = {
-    style: inject,
-    variables: onvariables,
-  }
-
-  let variables = []
-
-  const _ = {
-    send_quick_actions: null,
-    send_actions: null,
-    send_form_input: {},
-    send_steps_wizard: null
-  }
-
-  const el = document.createElement('div')
-  const shadow = el.attachShadow({ mode: 'closed' })
-  shadow.innerHTML = `
-    <div class="main">
-      <form-input></form-input>
-      <actions></actions>
-      <steps-wizard></steps-wizard>
-      <quick-actions></quick-actions>
-    </div>
-    <style></style>
-  `
-
-  const style = shadow.querySelector('style')
-  const steps_wizard_placeholder = shadow.querySelector('steps-wizard')
-  const quick_actions_placeholder = shadow.querySelector('quick-actions')
-  const actions_placeholder = shadow.querySelector('actions')
-  const form_input_placeholder = shadow.querySelector('form-input')
-
-  const subs = await sdb.watch(onbatch)
-
-  const quick_actions_el = await quick_actions(subs[0], quick_actions_protocol)
-  quick_actions_placeholder.replaceWith(quick_actions_el)
-
-  const actions_el = await actions(subs[1], actions_protocol)
-  actions_el.classList.add('hide')
-  actions_placeholder.replaceWith(actions_el)
-
-  const steps_wizard_el = await steps_wizard(subs[2], steps_wizard_protocol)
-  steps_wizard_el.classList.add('hide')
-  steps_wizard_placeholder.replaceWith(steps_wizard_el)
-
-  const form_input_elements = {}
-
-  for (const [component_name, component_fn] of Object.entries(component_modules)) {
-    const index = get_form_input_component_index(component_name)
-    const el = await component_fn(subs[index], form_input_protocol(component_name))
-    el.classList.add('hide')
-    form_input_elements[component_name] = el
-    form_input_placeholder.parentNode.insertBefore(el, form_input_placeholder)
-  }
-
-  form_input_placeholder.remove()
-
-  return el
-
-  // --- Internal Functions ---
-  async function onbatch(batch) {
-    for (const { type, paths } of batch) {
-      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
-      const func = on[type] || fail
-      func(data, type)
-    }
-  }
-
-  function fail(data, type) {
-    throw new Error('invalid message', { cause: { data, type } })
-  }
-
-  function inject(data) {
-    style.replaceChildren((() => {
-      return document.createElement('style').textContent = data[0]
-    })())
-  }
-
-  function onvariables(data) {
-    const vars = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
-    variables = vars['change_path']
-    if (_.send_steps_wizard)
-      _.send_steps_wizard({ type: "init_data", data: variables })
-  }
-
-  function toggle_view(el, show) {
-    el.classList.toggle('hide', !show)
-  }
-
-  function steps_toggle_view(display) {
-    toggle_view(steps_wizard_el, display === 'block')
-  }
-
-  function actions_toggle_view(display) {
-    toggle_view(actions_el, display === 'block')
-  }
-
-  function form_input_protocol(component_name) {
-    return function (send) {
-      _.send_form_input[component_name] = send
-      return function on({ type, data }) {
-        if (type === 'action_submitted') {
-          const step = variables[data?.index]
-          Object.assign(step, {
-            is_completed: true,
-            status: 'completed',
-            data: data?.value
-          })
-          drive.put('variables/program.json', { change_path: variables })
-        }
-      }
-    }
-  }
-
-  function steps_wizard_protocol(send) {
-    _.send_steps_wizard = send
-    return on
-    function on({ type, data }) {
-      if (type === 'step_clicked') {
-        console.log('step clicked data---------', type, data)
-        _.send_quick_actions({
-          type: 'update_steps',
-          data: {
-            current_step: data?.index + 1,
-            total_steps: data?.total_steps
-          }
-        })
-        
-        render_form_component(data.component)
-        const send = _.send_form_input[data.component]
-        if (send) send({ type: 'step_data', data })
-      }
-    }
-  }
-
-  function render_form_component(component_name) {
-    for (const name in form_input_elements) {
-      toggle_view(form_input_elements[name], name === component_name)
-    }
-  }
-
-  function get_form_input_component_index(component) {
-    const { _: components } = fallback_module()
-    return Object.keys(components).indexOf(component)
-  }
-
-  function actions_protocol(send) {
-    _.send_actions = send
-    return on
-    function on({ type, data }) {
-      _.send_quick_actions({
-        type,
-        data: {
-          ...data,
-          total_steps: variables.length
-        }
-      })
-      _.send_steps_wizard({ type: 'init_data', data: variables })
-      steps_toggle_view('block')
-
-      // render_form_component(data.component)
-      // const send = _.send_form_input[data.component]
-      // if (send) send({ type: 'step_data', data })
-
-      actions_toggle_view('none')
-    }
-  }
-
-  function quick_actions_protocol(send) {
-    _.send_quick_actions = send
-    return on
-    function on({ type, data }) {
-      on_quick_actions_message({ type, data })
-    }
-  }
-
-  function on_quick_actions_message({ type, data }) {
-    if (type == 'display_actions') {
-      actions_toggle_view(data)
-      if (data === 'none') {
-        steps_toggle_view(data)
-        for (const el of Object.values(form_input_elements)) {
-          toggle_view(el, false)
-        }
-        cleanup()
-      }
-    } else if (type == 'action_submitted') {
-      const is_completed = variables[data?.total_steps - 1]?.is_completed
-      if (is_completed) {
-        alert(JSON.stringify(variables.map(step => step.data), null, 2))
-        _.send_quick_actions?.({ type: 'deactivate_input_field' })
-      }
-    }
-  }
-
-  function cleanup() {
-    const cleaned = variables.map(step => ({
-      ...step,
-      is_completed: false,
-      data: ''
-    }))
-    drive.put('variables/program.json', { change_path: cleaned })
-  }
-}
-
-// --- Fallback Module ---
-function fallback_module() {
-  return {
-    api: fallback_instance,
-    _: {
-      'quick_actions': { $: '' },
-      'actions': { $: '' },
-      'steps_wizard': { $: '' },
-      'form_input': { $: '' },
-      'input_test': { $: '' }
-    }
-  }
-
-  function fallback_instance() {
-    return {
-      _: {
-        'quick_actions': {
-          0: '',
-          mapping: {
-            'style': 'style',
-            'icons': 'icons',
-            'actions': 'actions',
-            'hardcons': 'hardcons'
-          }
-        },
-        'actions': {
-          0: '',
-          mapping: {
-            'style': 'style',
-            'actions': 'actions',
-            'icons': 'icons',
-            'hardcons': 'hardcons'
-          }
-        },
-        'steps_wizard': {
-          0: '',
-          mapping: {
-            'style': 'style',
-            'variables': 'variables'
-          }
-        },
-        'form_input': {
-          0: '',
-          mapping: {
-            'style': 'style'
-          }
-        },
-        'input_test': {
-          0: '',
-          mapping: {
-            'style': 'style'
-          }
-        }
-      },
-      drive: {
-        'style/': {
-          'program.css': { '$ref': 'program.css' }
-        },
-        'variables/': {
-          'program.json': { '$ref': 'program.json' }
-        }
-      }
-    }
-  }
-}
-
-}).call(this)}).call(this,"/src/node_modules/program/program.js")
-},{"STATE":1,"actions":3,"form_input":5,"input_test":7,"quick_actions":10,"steps_wizard":13}],10:[function(require,module,exports){
+},{"STATE":1}],7:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1966,12 +1519,6 @@ async function quick_actions(opts, protocol) {
       <div class="input-display">
         <span class="slash-prefix">/</span>
         <span class="command-text"></span>
-        <span class="step-display" style="display: none;">
-          <span>steps:<span>
-          <span class="current-step">1</span>
-          <span class="step-separator">-</span>
-          <span class="total-step">1</span>
-        </span>
         <input class="input-field" type="text" placeholder="Type to search actions...">
       </div>
       <button class="submit-btn" style="display: none;"></button>
@@ -1988,9 +1535,6 @@ async function quick_actions(opts, protocol) {
   const input_field = shadow.querySelector('.input-field')
   const submit_btn = shadow.querySelector('.submit-btn')
   const close_btn = shadow.querySelector('.close-btn')
-  const step_display = shadow.querySelector('.step-display')
-  const current_step = shadow.querySelector('.current-step')
-  const total_steps = shadow.querySelector('.total-step')
   const style = shadow.querySelector('style')
   const main = shadow.querySelector('.main')
 
@@ -2020,11 +1564,6 @@ async function quick_actions(opts, protocol) {
   function onmessage ({ type, data }) {
     if (type === 'selected_action') {
       select_action(data)
-    } else if (type === 'update_steps') {
-      current_step.textContent = data.current_step
-      selected_action.current_step = data.current_step
-    } else if (type === 'deactivate_input_field') {
-      deactivate_input_field()
     }
   }
   function activate_input_field() {
@@ -2071,11 +1610,7 @@ async function quick_actions(opts, protocol) {
     if (selected_action) {
       slash_prefix.style.display = 'inline'
       command_text.style.display = 'inline'
-      command_text.textContent = `#${selected_action.action}`
-      current_step.textContent = selected_action?.current_step || 1
-      total_steps.textContent = selected_action.total_steps
-      step_display.style.display = 'inline-flex'
-      
+      command_text.textContent = `"${selected_action.action}"`
       input_field.style.display = 'none'
       submit_btn.style.display = 'flex'
     } else {
@@ -2083,7 +1618,6 @@ async function quick_actions(opts, protocol) {
       command_text.style.display = 'none'
       input_field.style.display = 'block'
       submit_btn.style.display = 'none'
-      step_display.style.display = 'none'
       input_field.placeholder = 'Type to search actions...'
     }
   }
@@ -2326,28 +1860,6 @@ function fallback_module() {
                 width: 16px;
                 height: 16px;
               }
-              .step-display {
-                display: inline-flex;
-                align-items: center;
-                gap: 2px;
-                margin-left: 8px;
-                background: #2d2d2d;
-                border: 1px solid #666;
-                border-radius: 4px;
-                padding: 1px 6px;
-                font-size: 12px;
-                color: #fff;
-                font-family: monospace;
-              }
-              .current-step {
-                color:#f0f0f0;
-              }
-              .step-separator {
-                color: #888;
-              }
-              .total-step {
-                color: #f0f0f0;
-              }
             `
           }
         }
@@ -2356,7 +1868,7 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/quick_actions/quick_actions.js")
-},{"STATE":1}],11:[function(require,module,exports){
+},{"STATE":1}],8:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -2638,7 +2150,7 @@ function fallback_module(){
   }
 }
 }).call(this)}).call(this,"/src/node_modules/quick_editor.js")
-},{"STATE":1}],12:[function(require,module,exports){
+},{"STATE":1}],9:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -2906,8 +2418,7 @@ function fallback_module () {
           0: '',
           mapping: {
             'style': 'style',
-            'entries': 'entries',
-            'icons': 'icons'
+            'entries': 'entries'
           }
         }
       },
@@ -2969,106 +2480,48 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/space.js")
-},{"STATE":1,"actions":3,"console_history":4,"graph_explorer":6,"tabbed_editor":14}],13:[function(require,module,exports){
+},{"STATE":1,"actions":3,"console_history":4,"graph_explorer":5,"tabbed_editor":11}],10:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 
+const actions = require('actions')
+
+
 module.exports = steps_wizard
 
-async function steps_wizard (opts, protocol) {
+async function steps_wizard (opts) {
   const { id, sdb } = await get(opts.sid)
   const {drive} = sdb
-  
   const on = {
     style: inject
-  }
-
-  let variables = []
-
-  let _ = null
-  if(protocol){
-    send = protocol(msg => onmessage(msg))
-    _ = { up: send }
   }
 
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
   <div class="steps-wizard main">
-    <div class="steps-slot"></div>
+    <div class="actions-slot"></div>
   </div>
   <style>
   </style>
   `
 
   const style = shadow.querySelector('style')
-  const steps_entries = shadow.querySelector('.steps-slot')
-  
+  const main = shadow.querySelector('.main')
+  const actions_slot = shadow.querySelector('.actions-slot')
+
+
   const subs = await sdb.watch(onbatch)
 
-  // for demo purpose
-  render_steps([
-    {name: "Optional Step", "type": "optional", "is_completed": false, "component": "form_input", "status": "default", "data": ""},
-	  {name: "Step 2", "type": "mandatory", "is_completed": false, "component": "form_input", "status": "default", "data": ""}
-  ])
+  let actions_el = null
 
+  actions_el = await actions(subs[0])
+  actions_slot.replaceWith(actions_el)
+  
   return el
   
-  function onmessage ({ type, data }) {
-    console.log('steps_ data', type, data)
-    if (type === 'init_data') {
-      variables = data
-      render_steps(variables)
-    }
-  }
-  
-  function render_steps(steps) {
-    if (!steps)
-      return;
-
-    steps_entries.innerHTML = '';
-
-    steps.forEach((step, index) => {
-      const btn = document.createElement('button')
-      btn.className = 'step-button'
-      btn.textContent = step.name + (step.type === 'optional' ? ' *' : '')
-      btn.setAttribute('data-step', index + 1)
-
-      const accessible = can_access(index, steps)
-
-      let status = 'default'
-      if (!accessible) status = 'disabled'
-      else if (step.is_completed) status = 'completed'
-      else if (step.status === 'error') status = 'error'
-      else if (step.type === 'optional') status = 'optional'
-
-      btn.classList.add(`step-${status}`)
-      btn.disabled = (status === 'disabled')
-
-      btn.onclick = async () => {
-        if (!btn.disabled) {
-          console.log('Clicked:', step)
-            _?.up({type: 'step_clicked', data: {...step, index, total_steps: steps.length}})
-        }
-      };
-
-      steps_entries.appendChild(btn)
-    });
-    
-  }
-
-  function can_access(index, steps) {
-    for (let i = 0; i < index; i++) {
-      if (!steps[i].is_completed && steps[i].type !== 'optional') {
-        return false
-      }
-    }
-
-    return true
-  }
-
   async function onbatch(batch) {
     for (const { type, paths } of batch){
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
@@ -3082,20 +2535,46 @@ async function steps_wizard (opts, protocol) {
       return document.createElement('style').textContent = data[0]
     })())
   }
- 
 }
 
 function fallback_module () {
   return {
-    api: fallback_instance
+    api: fallback_instance,
+    _: {
+      'actions': {
+        $: ''
+      },
+    }
   }
 
   function fallback_instance () {
     return {
+      _: {
+        'actions': {
+          0: '',
+          mapping: {
+            'style': 'style',
+            'actions': 'actions',
+            'icons': 'icons',
+            'hardcons': 'hardcons'
+          }
+        }
+      },
       drive: {
         'style/': {
           'stepswizard.css': {
-            '$ref': 'stepswizard.css' 
+            raw: `
+              .steps-wizard {
+                display: flex;
+                flex-direction: column;
+                width: 100%;
+                height: 100%;
+                background: #131315;
+              }
+              .space{
+                height: inherit;
+                }
+            `
           }
         }
       }
@@ -3104,7 +2583,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/steps_wizard/steps_wizard.js")
-},{"STATE":1}],14:[function(require,module,exports){
+},{"STATE":1,"actions":3}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3498,7 +2977,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor/tabbed_editor.js")
-},{"STATE":1}],15:[function(require,module,exports){
+},{"STATE":1}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3710,7 +3189,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/tabs.js")
-},{"STATE":1}],16:[function(require,module,exports){
+},{"STATE":1}],13:[function(require,module,exports){
 (function (__filename){(function (){
 const state = require('STATE')
 const state_db = state(__filename)
@@ -3893,7 +3372,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/tabsbar/tabsbar.js")
-},{"STATE":1,"tabs":15,"task_manager":17}],17:[function(require,module,exports){
+},{"STATE":1,"tabs":12,"task_manager":14}],14:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3986,7 +3465,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager.js")
-},{"STATE":1}],18:[function(require,module,exports){
+},{"STATE":1}],15:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4144,7 +3623,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/taskbar.js")
-},{"STATE":1,"action_bar":2,"tabsbar":16}],19:[function(require,module,exports){
+},{"STATE":1,"action_bar":2,"tabsbar":13}],16:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4280,7 +3759,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/theme_widget.js")
-},{"STATE":1,"space":12,"taskbar":18}],20:[function(require,module,exports){
+},{"STATE":1,"space":9,"taskbar":15}],17:[function(require,module,exports){
 const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/main/'
 const init_url = location.hash === '#dev' ? 'web/init.js' : prefix + 'src/node_modules/init.js'
 const args = arguments
@@ -4301,7 +3780,7 @@ fetch(init_url, fetch_opts).then(res => res.text()).then(async source => {
   require('./page') // or whatever is otherwise the main entry of our project
 })
 
-},{"./page":21}],21:[function(require,module,exports){
+},{"./page":18}],18:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
@@ -4324,7 +3803,6 @@ const task_manager = require('../src/node_modules/task_manager')
 const quick_actions = require('../src/node_modules/quick_actions')
 const graph_explorer = require('../src/node_modules/graph_explorer')
 const editor = require('../src/node_modules/quick_editor')
-const program = require('../src/node_modules/program')
 const steps_wizard = require('../src/node_modules/steps_wizard')
 
 const imports = {
@@ -4340,7 +3818,6 @@ const imports = {
   task_manager,
   quick_actions,
   graph_explorer,
-  program,
   steps_wizard,
 }
 config().then(() => boot({ sid: '' }))
@@ -4602,8 +4079,7 @@ function fallback_module () {
     '../src/node_modules/task_manager',
     '../src/node_modules/quick_actions',
     '../src/node_modules/graph_explorer',
-    '../src/node_modules/program',
-    '../src/node_modules/steps_wizard',
+    '../src/node_modules/steps_wizard'
   ]
   const subs = {}
   names.forEach(subgen)
@@ -4614,21 +4090,6 @@ function fallback_module () {
       'icons': 'icons',
       'variables': 'variables',
       'scroll': 'scroll',
-      'style': 'style'
-    }
-  }
-  subs['../src/node_modules/program'] = {
-    $: '',
-    0: '',
-    mapping: {
-      'variables': 'variables',
-      'style': 'style'
-    }
-  }
-  subs['../src/node_modules/steps_wizard'] = {
-    $: '',
-    0: '',
-    mapping: {
       'style': 'style'
     }
   }
@@ -4701,8 +4162,7 @@ function fallback_module () {
     0: '',
     mapping: {
       'style': 'style',
-      'entries': 'entries',
-      'icons': 'icons'
+      'entries': 'entries'
     }
   }
   subs[menuname] = { 
@@ -4753,6 +4213,7 @@ function fallback_module () {
           }
       
           .component-wrapper {
+            position: relative;
             padding: 15px;
             border: 3px solid #666;
             resize: both;
@@ -4806,10 +4267,6 @@ function fallback_module () {
         input:checked + .slider::before {
           transform: translateX(24px);
         }
-        .component-wrapper {
-        position: relative;
-        overflow: visible;
-      }
       .component-wrapper:hover::before {
         content: '';
         position: absolute;
@@ -4819,7 +4276,9 @@ function fallback_module () {
         left: 0;
         border: 4px solid skyblue;
         pointer-events: none;
-        z-index: 4;
+        z-index: 15;
+        resize: both;
+        overflow: auto;
       }
       .component-wrapper:hover .quick-editor {
         display: block;
@@ -4829,7 +4288,7 @@ function fallback_module () {
         position: absolute;
         top: -5px;
         right: -10px;
-        z-index: 5;
+        z-index: 16;
       }`
         }
       }
@@ -4854,4 +4313,4 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/actions":3,"../src/node_modules/console_history":4,"../src/node_modules/graph_explorer":6,"../src/node_modules/menu":8,"../src/node_modules/program":9,"../src/node_modules/quick_actions":10,"../src/node_modules/quick_editor":11,"../src/node_modules/space":12,"../src/node_modules/steps_wizard":13,"../src/node_modules/tabbed_editor":14,"../src/node_modules/tabs":15,"../src/node_modules/tabsbar":16,"../src/node_modules/task_manager":17,"../src/node_modules/taskbar":18,"../src/node_modules/theme_widget":19}]},{},[20]);
+},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/actions":3,"../src/node_modules/console_history":4,"../src/node_modules/graph_explorer":5,"../src/node_modules/menu":6,"../src/node_modules/quick_actions":7,"../src/node_modules/quick_editor":8,"../src/node_modules/space":9,"../src/node_modules/steps_wizard":10,"../src/node_modules/tabbed_editor":11,"../src/node_modules/tabs":12,"../src/node_modules/tabsbar":13,"../src/node_modules/task_manager":14,"../src/node_modules/taskbar":15,"../src/node_modules/theme_widget":16}]},{},[17]);
