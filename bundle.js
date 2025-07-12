@@ -1511,6 +1511,13 @@ function fallback_module () {
 						.input-field::placeholder {
 							color: #a6a6a6;
 						}
+            .overlay-lock {
+              position: absolute;
+              inset: 0;
+              background: transparent;
+              z-index: 10;
+              cursor: not-allowed;
+            }
 						`
           }
         }
@@ -3185,13 +3192,10 @@ async function steps_wizard (opts, protocol) {
       else if (step.type === 'optional') status = 'optional'
 
       btn.classList.add(`step-${status}`)
-      // btn.disabled = (status === 'disabled')
 
       btn.onclick = async () => {
-        // if (!btn.disabled) {
-          console.log('Clicked:', step)
-          _?.up({type: 'step_clicked', data: {...step, index, total_steps: steps.length, is_accessible: accessible}})
-        
+        console.log('Clicked:', step)
+        _?.up({type: 'step_clicked', data: {...step, index, total_steps: steps.length, is_accessible: accessible}})
       };
 
       steps_entries.appendChild(btn)
