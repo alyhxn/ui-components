@@ -1,2 +1,2 @@
 # ui-components
-various ui-components
+see https://playproject.io/ui-components/
