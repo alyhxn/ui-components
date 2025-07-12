@@ -175,7 +175,7 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/action_bar/action_bar.js")
-},{"STATE":1,"quick_actions":10}],3:[function(require,module,exports){
+},{"STATE":1,"quick_actions":7}],3:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -820,7 +820,7 @@ function fallback_module () {
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
+const { get } = statedb(fallback_module)
 
 module.exports = form_input
 async function form_input (opts, protocol) {
@@ -972,82 +972,48 @@ module.exports = component
 async function component (opts, protocol) {
   const { sdb } = await get(opts.sid)
   const { drive } = sdb
+
+  let vertical_scroll_value = 0
+  let horizontal_scroll_value = 0
+
   const on = {
-    style: inject_style,
     entries: on_entries,
-    icons: iconject
+    style: inject_style
   }
 
   const el = document.createElement('div')
+  el.className = 'graph-explorer-wrapper'
+  el.onscroll = () => {
+    vertical_scroll_value = el.scrollTop
+    horizontal_scroll_value = el.scrollLeft
+  }
   const shadow = el.attachShadow({ mode: 'closed' })
-  shadow.innerHTML = `
-  <div class="graph-explorer">
-    <div class="explorer-container"></div>
-  </div>`
+  shadow.innerHTML = `<div class="graph-container"></div>`
+  const container = shadow.querySelector('.graph-container')
 
-  const container = shadow.querySelector('.explorer-container')
-
-  /******************************************************************************
-  Variables for entries and view management. To get data from the state drive.
-  ******************************************************************************/
-  let entries = []
+  let all_entries = {}
   let view = []
-  let view_num = 0
-  let expanded_nodes = new Set()
-  let init = false
+  const instance_states = {}
 
-  /******************************************************************************
-  Intersection Observer to track which nodes are currently in view.
-  //TODO: Lazy loading of nodes based on scroll visibility.
-  ******************************************************************************/
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      const node_id = entry.target.dataset.path
-      if (entry.isIntersecting) {
-        if (!view.includes(node_id)) {
-          view.push(node_id)
-        }
-      } else {
-        const index = view.indexOf(node_id)
-        if (index !== -1) {
-          view.splice(index, 1)
-        }
-      }
-    })
-  }, {
-    root: container,
-    threshold: 0.1
+  let start_index = 0
+  let end_index = 0
+  const chunk_size = 50
+  const max_rendered_nodes = chunk_size * 3
+  const node_height = 22
+
+  const top_sentinel = document.createElement('div')
+  const bottom_sentinel = document.createElement('div')
+  top_sentinel.className = 'sentinel'
+  bottom_sentinel.className = 'sentinel'
+
+  const observer = new IntersectionObserver(handle_sentinel_intersection, {
+    root: el,
+    threshold: 0
   })
 
-  function calculate_view_num() {
-    const container_height = container.clientHeight
-    const node_height = 24
-    view_num = Math.ceil(container_height / node_height) * 3 || 30
-    // console.log('view:', view)
-  }
-
-
-  const subs = await sdb.watch(onbatch)
-
-  /******************************************************************************
-  Resize Observer
-  ******************************************************************************/
-  const resize_observer = new ResizeObserver(() => {
-    calculate_view_num()
-    render_visible_nodes()
-  })
-  resize_observer.observe(container)
-
-  let send = null
-  if (protocol) {
-    send = protocol(msg => onmessage(msg))
-  }
+  await sdb.watch(onbatch)
 
   return el
-
-  function onmessage(msg) {
-    // console.log('Graph Explorer received message:', msg)
-  }
 
   async function onbatch(batch) {
     for (const { type, paths } of batch) {
@@ -1055,26 +1021,24 @@ async function component (opts, protocol) {
       const func = on[type] || fail
       func(data, type)
     }
-    if (!init && entries.length > 0) {
-      calculate_view_num()
-      render_visible_nodes()
-      init = true
+  }
+
+  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+
+  function on_entries(data) {
+    all_entries = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
+    const root_path = '/'
+    if (all_entries[root_path]) {
+      if (!instance_states[root_path]) {
+        instance_states[root_path] = { expanded_subs: true, expanded_hubs: false }
+      }
+      build_and_render_view()
     }
   }
 
-  function fail (data, type) { 
-    throw new Error('invalid message', { cause: { data, type } }) 
-  }
-
-  function on_entries(data) {
-    entries = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
-  }
-  function iconject(data) {
-    icons = data
-  }
   function inject_style(data) {
     const sheet = new CSSStyleSheet()
-    sheet.replaceSync(data)
+    sheet.replaceSync(data[0])
     shadow.adoptedStyleSheets = [sheet]
   }
   /******************************************************************************
@@ -1364,15 +1328,18 @@ async function input_test (opts, protocol) {
         : 'Input disabled for this step'
     }
   }
-
 }
-function fallback_module () {
+
+function fallback_module() {
   return {
-    api: fallback_instance,
+    api: fallback_instance
   }
-  function fallback_instance () {
+  function fallback_instance() {
     return {
       drive: {
+        'entries/': {
+          'entries.json': { $ref: 'entries.json' }
+        },
         'style/': {
           'theme.css': {
             raw: `
@@ -1416,8 +1383,8 @@ function fallback_module () {
   }
 }
 
-}).call(this)}).call(this,"/src/node_modules/input_test.js")
-},{"STATE":1}],8:[function(require,module,exports){
+}).call(this)}).call(this,"/src/node_modules/graph_explorer/graph_explorer.js")
+},{"STATE":1}],6:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1999,12 +1966,6 @@ async function quick_actions(opts, protocol) {
       <div class="input-display">
         <span class="slash-prefix">/</span>
         <span class="command-text"></span>
-        <span class="step-display" style="display: none;">
-          <span>steps:<span>
-          <span class="current-step">1</span>
-          <span class="step-separator">-</span>
-          <span class="total-step">1</span>
-        </span>
         <input class="input-field" type="text" placeholder="Type to search actions...">
       </div>
       <button class="submit-btn" style="display: none;"></button>
@@ -2021,9 +1982,6 @@ async function quick_actions(opts, protocol) {
   const input_field = shadow.querySelector('.input-field')
   const submit_btn = shadow.querySelector('.submit-btn')
   const close_btn = shadow.querySelector('.close-btn')
-  const step_display = shadow.querySelector('.step-display')
-  const current_step = shadow.querySelector('.current-step')
-  const total_steps = shadow.querySelector('.total-step')
   const style = shadow.querySelector('style')
   const main = shadow.querySelector('.main')
 
@@ -2110,18 +2068,13 @@ async function quick_actions(opts, protocol) {
     if (selected_action) {
       slash_prefix.style.display = 'inline'
       command_text.style.display = 'inline'
-      command_text.textContent = `#${selected_action.action}`
-      current_step.textContent = selected_action?.current_step || 1
-      total_steps.textContent = selected_action.total_steps
-      step_display.style.display = 'inline-flex'
-      
+      command_text.textContent = `"${selected_action.action}"`
       input_field.style.display = 'none'
     } else {
       slash_prefix.style.display = 'none'
       command_text.style.display = 'none'
       input_field.style.display = 'block'
       submit_btn.style.display = 'none'
-      step_display.style.display = 'none'
       input_field.placeholder = 'Type to search actions...'
     }
   }
@@ -2364,28 +2317,6 @@ function fallback_module() {
                 width: 16px;
                 height: 16px;
               }
-              .step-display {
-                display: inline-flex;
-                align-items: center;
-                gap: 2px;
-                margin-left: 8px;
-                background: #2d2d2d;
-                border: 1px solid #666;
-                border-radius: 4px;
-                padding: 1px 6px;
-                font-size: 12px;
-                color: #fff;
-                font-family: monospace;
-              }
-              .current-step {
-                color:#f0f0f0;
-              }
-              .step-separator {
-                color: #888;
-              }
-              .total-step {
-                color: #f0f0f0;
-              }
             `
           }
         }
@@ -2394,7 +2325,7 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/quick_actions/quick_actions.js")
-},{"STATE":1}],11:[function(require,module,exports){
+},{"STATE":1}],8:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -2676,7 +2607,7 @@ function fallback_module(){
   }
 }
 }).call(this)}).call(this,"/src/node_modules/quick_editor.js")
-},{"STATE":1}],12:[function(require,module,exports){
+},{"STATE":1}],9:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -2944,8 +2875,7 @@ function fallback_module () {
           0: '',
           mapping: {
             'style': 'style',
-            'entries': 'entries',
-            'icons': 'icons'
+            'entries': 'entries'
           }
         }
       },
@@ -3007,51 +2937,46 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/space.js")
-},{"STATE":1,"actions":3,"console_history":4,"graph_explorer":6,"tabbed_editor":14}],13:[function(require,module,exports){
+},{"STATE":1,"actions":3,"console_history":4,"graph_explorer":5,"tabbed_editor":11}],10:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 
+const actions = require('actions')
+
+
 module.exports = steps_wizard
 
-async function steps_wizard (opts, protocol) {
+async function steps_wizard (opts) {
   const { id, sdb } = await get(opts.sid)
   const {drive} = sdb
-  
   const on = {
     style: inject
-  }
-
-  let variables = []
-
-  let _ = null
-  if(protocol){
-    send = protocol(msg => onmessage(msg))
-    _ = { up: send }
   }
 
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
   <div class="steps-wizard main">
-    <div class="steps-slot"></div>
+    <div class="actions-slot"></div>
   </div>
   <style>
   </style>
   `
 
   const style = shadow.querySelector('style')
-  const steps_entries = shadow.querySelector('.steps-slot')
-  
+  const main = shadow.querySelector('.main')
+  const actions_slot = shadow.querySelector('.actions-slot')
+
+
   const subs = await sdb.watch(onbatch)
 
-  // for demo purpose
-  render_steps([
-    {name: "Optional Step", "type": "optional", "is_completed": false, "component": "form_input", "status": "default", "data": ""},
-	  {name: "Step 2", "type": "mandatory", "is_completed": false, "component": "form_input", "status": "default", "data": ""}
-  ])
+  let actions_el = null
 
+  actions_el = await actions(subs[0])
+  actions_slot.replaceWith(actions_el)
+  
   return el
   
   function onmessage ({ type, data }) {
@@ -3120,20 +3045,46 @@ async function steps_wizard (opts, protocol) {
       return document.createElement('style').textContent = data[0]
     })())
   }
- 
 }
 
 function fallback_module () {
   return {
-    api: fallback_instance
+    api: fallback_instance,
+    _: {
+      'actions': {
+        $: ''
+      },
+    }
   }
 
   function fallback_instance () {
     return {
+      _: {
+        'actions': {
+          0: '',
+          mapping: {
+            'style': 'style',
+            'actions': 'actions',
+            'icons': 'icons',
+            'hardcons': 'hardcons'
+          }
+        }
+      },
       drive: {
         'style/': {
           'stepswizard.css': {
-            '$ref': 'stepswizard.css' 
+            raw: `
+              .steps-wizard {
+                display: flex;
+                flex-direction: column;
+                width: 100%;
+                height: 100%;
+                background: #131315;
+              }
+              .space{
+                height: inherit;
+                }
+            `
           }
         }
       }
@@ -3142,7 +3093,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/steps_wizard/steps_wizard.js")
-},{"STATE":1}],14:[function(require,module,exports){
+},{"STATE":1,"actions":3}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3536,7 +3487,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor/tabbed_editor.js")
-},{"STATE":1}],15:[function(require,module,exports){
+},{"STATE":1}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3748,7 +3699,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/tabs.js")
-},{"STATE":1}],16:[function(require,module,exports){
+},{"STATE":1}],13:[function(require,module,exports){
 (function (__filename){(function (){
 const state = require('STATE')
 const state_db = state(__filename)
@@ -3931,7 +3882,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/tabsbar/tabsbar.js")
-},{"STATE":1,"tabs":15,"task_manager":17}],17:[function(require,module,exports){
+},{"STATE":1,"tabs":12,"task_manager":14}],14:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4024,7 +3975,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager.js")
-},{"STATE":1}],18:[function(require,module,exports){
+},{"STATE":1}],15:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4182,7 +4133,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/taskbar.js")
-},{"STATE":1,"action_bar":2,"tabsbar":16}],19:[function(require,module,exports){
+},{"STATE":1,"action_bar":2,"tabsbar":13}],16:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4318,7 +4269,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/theme_widget.js")
-},{"STATE":1,"space":12,"taskbar":18}],20:[function(require,module,exports){
+},{"STATE":1,"space":9,"taskbar":15}],17:[function(require,module,exports){
 const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/main/'
 const init_url = location.hash === '#dev' ? 'web/init.js' : prefix + 'src/node_modules/init.js'
 const args = arguments
@@ -4339,7 +4290,7 @@ fetch(init_url, fetch_opts).then(res => res.text()).then(async source => {
   require('./page') // or whatever is otherwise the main entry of our project
 })
 
-},{"./page":21}],21:[function(require,module,exports){
+},{"./page":18}],18:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
@@ -4362,7 +4313,6 @@ const task_manager = require('../src/node_modules/task_manager')
 const quick_actions = require('../src/node_modules/quick_actions')
 const graph_explorer = require('../src/node_modules/graph_explorer')
 const editor = require('../src/node_modules/quick_editor')
-const program = require('../src/node_modules/program')
 const steps_wizard = require('../src/node_modules/steps_wizard')
 
 const imports = {
@@ -4378,7 +4328,6 @@ const imports = {
   task_manager,
   quick_actions,
   graph_explorer,
-  program,
   steps_wizard,
 }
 config().then(() => boot({ sid: '' }))
@@ -4640,8 +4589,7 @@ function fallback_module () {
     '../src/node_modules/task_manager',
     '../src/node_modules/quick_actions',
     '../src/node_modules/graph_explorer',
-    '../src/node_modules/program',
-    '../src/node_modules/steps_wizard',
+    '../src/node_modules/steps_wizard'
   ]
   const subs = {}
   names.forEach(subgen)
@@ -4652,21 +4600,6 @@ function fallback_module () {
       'icons': 'icons',
       'variables': 'variables',
       'scroll': 'scroll',
-      'style': 'style'
-    }
-  }
-  subs['../src/node_modules/program'] = {
-    $: '',
-    0: '',
-    mapping: {
-      'variables': 'variables',
-      'style': 'style'
-    }
-  }
-  subs['../src/node_modules/steps_wizard'] = {
-    $: '',
-    0: '',
-    mapping: {
       'style': 'style'
     }
   }
@@ -4739,8 +4672,7 @@ function fallback_module () {
     0: '',
     mapping: {
       'style': 'style',
-      'entries': 'entries',
-      'icons': 'icons'
+      'entries': 'entries'
     }
   }
   subs[menuname] = { 
@@ -4791,6 +4723,7 @@ function fallback_module () {
           }
       
           .component-wrapper {
+            position: relative;
             padding: 15px;
             border: 3px solid #666;
             resize: both;
@@ -4844,10 +4777,6 @@ function fallback_module () {
         input:checked + .slider::before {
           transform: translateX(24px);
         }
-        .component-wrapper {
-        position: relative;
-        overflow: visible;
-      }
       .component-wrapper:hover::before {
         content: '';
         position: absolute;
@@ -4857,7 +4786,9 @@ function fallback_module () {
         left: 0;
         border: 4px solid skyblue;
         pointer-events: none;
-        z-index: 4;
+        z-index: 15;
+        resize: both;
+        overflow: auto;
       }
       .component-wrapper:hover .quick-editor {
         display: block;
@@ -4867,7 +4798,7 @@ function fallback_module () {
         position: absolute;
         top: -5px;
         right: -10px;
-        z-index: 5;
+        z-index: 16;
       }`
         }
       }
@@ -4892,4 +4823,4 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/actions":3,"../src/node_modules/console_history":4,"../src/node_modules/graph_explorer":6,"../src/node_modules/menu":8,"../src/node_modules/program":9,"../src/node_modules/quick_actions":10,"../src/node_modules/quick_editor":11,"../src/node_modules/space":12,"../src/node_modules/steps_wizard":13,"../src/node_modules/tabbed_editor":14,"../src/node_modules/tabs":15,"../src/node_modules/tabsbar":16,"../src/node_modules/task_manager":17,"../src/node_modules/taskbar":18,"../src/node_modules/theme_widget":19}]},{},[20]);
+},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/actions":3,"../src/node_modules/console_history":4,"../src/node_modules/graph_explorer":5,"../src/node_modules/menu":6,"../src/node_modules/quick_actions":7,"../src/node_modules/quick_editor":8,"../src/node_modules/space":9,"../src/node_modules/steps_wizard":10,"../src/node_modules/tabbed_editor":11,"../src/node_modules/tabs":12,"../src/node_modules/tabsbar":13,"../src/node_modules/task_manager":14,"../src/node_modules/taskbar":15,"../src/node_modules/theme_widget":16}]},{},[17]);
