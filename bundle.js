@@ -175,7 +175,7 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/action_bar/action_bar.js")
-},{"STATE":1,"quick_actions":7}],3:[function(require,module,exports){
+},{"STATE":1,"quick_actions":10}],3:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -820,7 +820,7 @@ function fallback_module () {
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
-const { get } = statedb(fallback_module)
+const { sdb, get } = statedb(fallback_module)
 
 module.exports = form_input
 async function form_input (opts, protocol) {
@@ -965,11 +965,11 @@ function fallback_module () {
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
-const { sdb, get } = statedb(fallback_module)
+const { get } = statedb(fallback_module)
 
-module.exports = component
+module.exports = graph_explorer
 
-async function component (opts, protocol) {
+async function graph_explorer(opts) {
   const { sdb } = await get(opts.sid)
   const { drive } = sdb
 
@@ -1041,123 +1041,279 @@ async function component (opts, protocol) {
     sheet.replaceSync(data[0])
     shadow.adoptedStyleSheets = [sheet]
   }
-  /******************************************************************************
-  Function for the rendering based on the visible nodes.
-  ******************************************************************************/
-  function render_visible_nodes() {
+
+  function build_and_render_view(focal_instance_path = null) {
+    const old_view = [...view]
+    const old_scroll_top = vertical_scroll_value
+    const old_scroll_left = horizontal_scroll_value
+
+    view = build_view_recursive({
+      base_path: '/',
+      parent_instance_path: '',
+      depth: 0,
+      is_last_sub : true,
+      is_hub: false,
+      parent_pipe_trail: [],
+      instance_states,
+      all_entries
+    })
+
+    let focal_index = -1
+    if (focal_instance_path) {
+      focal_index = view.findIndex(
+        node => node.instance_path === focal_instance_path
+      )
+    }
+    if (focal_index === -1) {
+      focal_index = Math.floor(old_scroll_top / node_height)
+    }
+
+    const old_focal_node = old_view[focal_index]
+    let new_scroll_top = old_scroll_top
+
+    if (old_focal_node) {
+      const old_focal_instance_path = old_focal_node.instance_path
+      const new_focal_index = view.findIndex(
+        node => node.instance_path === old_focal_instance_path
+      )
+      if (new_focal_index !== -1) {
+        const scroll_diff = (new_focal_index - focal_index) * node_height
+        new_scroll_top = old_scroll_top + scroll_diff
+      }
+    }
+
+    start_index = Math.max(0, focal_index - Math.floor(chunk_size / 2))
+    end_index = start_index
+
     container.replaceChildren()
-    if (entries.length === 0) return
-    
-    const visible_entries = calculate_visible_entries()
-    visible_entries.forEach(entry => {
-      const node = create_node(entry)
-      // console.log(container, node)
-      container.appendChild(node)
-      observer.observe(node)
+    container.appendChild(top_sentinel)
+    container.appendChild(bottom_sentinel)
+    observer.observe(top_sentinel)
+    observer.observe(bottom_sentinel)
+
+    render_next_chunk()
+
+    requestAnimationFrame(() => {
+      el.scrollTop = new_scroll_top
+      el.scrollLeft = old_scroll_left
     })
   }
 
-  function calculate_visible_entries() {
-    const visible_entries = []
-    visible_entries.push(entries[0])
-    let queue = [...entries[0].subs.map(index => entries[index])]
-    
-    while (queue.length > 0 && visible_entries.length < view_num) {
-      const entry = queue.shift()
-      if (!entry) continue
-      visible_entries.push(entry)
+  function build_view_recursive({
+    base_path,
+    parent_instance_path,
+    depth,
+    is_last_sub,
+    is_hub,
+    parent_pipe_trail,
+    instance_states,
+    all_entries
+  }) {
 
-      const entry_path = get_full_path(entry)
-      if (expanded_nodes.has(entry_path) && entry.subs && entry.subs.length > 0) {
-        queue = [...entry.subs.map(index => entries[index]), ...queue]
+    const instance_path = `${parent_instance_path}|${base_path}`
+    const entry = all_entries[base_path]
+    if (!entry) return []
+
+    if (!instance_states[instance_path]) {
+      instance_states[instance_path] = {
+        expanded_subs: false,
+        expanded_hubs: false
       }
     }
-    
-    return visible_entries
-  }
-  /******************************************************************************
-  Create a node element for the explorer tree.
-  ******************************************************************************/
-  function create_node(entry) {
-    const node = document.createElement('div')
-    const depth = calculate_depth(entry.path)
-    const is_expanded = expanded_nodes.has(get_full_path(entry))
-    const has_children = entry.subs && entry.subs.length > 0
-    
-    let icon = get_icon_for_type(entry.type)
-    let prefix = create_tree_prefix(entry, depth, is_expanded, has_children)
-    
-    node.className = 'explorer-node'
-    node.dataset.path = get_full_path(entry)
-    node.dataset.index = entries.indexOf(entry)
-    node.style.paddingLeft = `${depth * 10}px`
-    
-    node.innerHTML = `
-      <span class="tree-prefix">${prefix}</span>
-      <span class="node-icon">${icon}</span>
-      <span class="node-name">${entry.name}</span>
-    `
-    
-    // Setup click handlers
-    const prefix_el = node.querySelector('.tree-prefix')
-    const icon_el = node.querySelector('.node-icon')
-    
-    if (has_children) {
-      prefix_el.onclick = null
-      //TODO: Add supernode support
-      icon_el.onclick = () => toggle_node(entry)
+    const state = instance_states[instance_path]
+    const children_pipe_trail = [...parent_pipe_trail]
+    let last_pipe = null
+
+    if (depth > 0) {
+      if (is_hub) {
+        last_pipe = [...parent_pipe_trail]
+        if (is_last_sub) { 
+          children_pipe_trail.pop()
+          children_pipe_trail.push(is_last_sub)
+          last_pipe.pop()
+          last_pipe.push(true)
+        }
+      }
+      children_pipe_trail.push(!is_last_sub || is_hub)
     }
-    
-    return node
+
+    let current_view = []
+
+    if (state.expanded_hubs && entry.hubs) {
+      entry.hubs.forEach((hub_path, i, arr) => {
+        current_view = current_view.concat(
+          build_view_recursive({
+            base_path: hub_path,
+            parent_instance_path: instance_path,
+            depth: depth + 1,
+            is_last_sub : i === arr.length - 1,
+            is_hub: true,
+            parent_pipe_trail: children_pipe_trail,
+            instance_states,
+            all_entries
+          })
+        )
+      })
+    }
+
+    current_view.push({
+      base_path,
+      instance_path,
+      depth,
+      is_last_sub,
+      is_hub,
+      pipe_trail: (is_hub && is_last_sub) ? last_pipe : parent_pipe_trail
+    })
+
+    if (state.expanded_subs && entry.subs) {
+      entry.subs.forEach((sub_path, i, arr) => {
+        current_view = current_view.concat(
+          build_view_recursive({
+            base_path: sub_path,
+            parent_instance_path: instance_path,
+            depth: depth + 1,
+            is_last_sub: i === arr.length - 1,
+            is_hub: false,
+            parent_pipe_trail: children_pipe_trail,
+            instance_states,
+            all_entries
+          })
+        )
+      })
+    }
+    return current_view
   }
 
-  // Toggle node expansion state
-  function toggle_node(entry) {
-    const path = get_full_path(entry)
-    
-    if (expanded_nodes.has(path)) {
-      expanded_nodes.delete(path)
-    } else {
-      expanded_nodes.add(path)
-    }
-    render_visible_nodes()
-    // console.log('view:', view)
-    // console.log('view:', view_num)
+  function handle_sentinel_intersection(entries) {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        if (entry.target === top_sentinel) render_prev_chunk()
+        else if (entry.target === bottom_sentinel) render_next_chunk()
+      }
+    })
   }
 
-  // Get appropriate icon for entry type
-  function get_icon_for_type(type) {
-    const type_icons = {
-      'root': '🌐',
-      'folder': '📁',
-      'file': '📄',
-      'html-file': '📄',
-      'js-file': '📄',
-      'css-file': '🖌️',
-      'json-file': '🎨'
+  function render_next_chunk() {
+    if (end_index >= view.length) return
+    const fragment = document.createDocumentFragment()
+    const next_end = Math.min(view.length, end_index + chunk_size)
+    for (let i = end_index; i < next_end; i++) {
+      fragment.appendChild(create_node(view[i]))
     }
-    
-    return type_icons[type] || '📄'
+    container.insertBefore(fragment, bottom_sentinel)
+    end_index = next_end
+    cleanup_dom(false)
   }
-  /******************************************************************************
-   Prefix creation for tree structure.
-   //TODO: Add support for different icons based on entry type.
-  /******************************************************************************/
-  function create_tree_prefix(entry, depth, is_expanded, has_children) {
-    if (depth === 0) return has_children ? (is_expanded ? '🪄┬' : '🪄┬') : '🪄─'
-    if (has_children) {
-      return is_expanded ? '├┬' : '├─'
+
+  function render_prev_chunk() {
+    if (start_index <= 0) return
+    const fragment = document.createDocumentFragment()
+    const prev_start = Math.max(0, start_index - chunk_size)
+    for (let i = prev_start; i < start_index; i++) {
+      fragment.appendChild(create_node(view[i]))
+    }
+    const old_scroll_height = container.scrollHeight
+    const old_scroll_top = el.scrollTop
+    container.insertBefore(fragment, top_sentinel.nextSibling)
+    start_index = prev_start
+    el.scrollTop = old_scroll_top + (container.scrollHeight - old_scroll_height)
+    cleanup_dom(true)
+  }
+
+  function cleanup_dom(is_scrolling_up) {
+    const rendered_count = end_index - start_index
+    if (rendered_count < max_rendered_nodes) return
+    const to_remove_count = rendered_count - max_rendered_nodes
+    if (is_scrolling_up) {
+      for (let i = 0; i < to_remove_count; i++) {
+        bottom_sentinel.previousElementSibling.remove()
+      }
+      end_index -= to_remove_count
     } else {
+      for (let i = 0; i < to_remove_count; i++) {
+        top_sentinel.nextElementSibling.remove()
+      }
+      start_index += to_remove_count
+    }
+  }
+
+  function get_prefix(is_last_sub, has_subs, state, is_hub) {
+    const { expanded_subs, expanded_hubs } = state
+    if (is_hub) {
+      if (expanded_subs && expanded_hubs) return '┌┼'
+      if (expanded_subs) return '┌┬'
+      if (expanded_hubs) return '┌┴'
+      return '┌─'
+    } else if (is_last_sub) {
+      if (expanded_subs && expanded_hubs) return '└┼'
+      if (expanded_subs) return '└┬'
+      if (expanded_hubs) return '└┴'
       return '└─'
+    } else {
+      if (expanded_subs && expanded_hubs) return '├┼'
+      if (expanded_subs) return '├┬'
+      if (expanded_hubs) return '├┴'
+      return '├─'
     }
   }
 
-  function calculate_depth(path) {
-    if (!path) return 0
-    return (path.match(/\//g) || []).length
+  function create_node({ base_path, instance_path, depth, is_last_sub, is_hub, pipe_trail }) {
+    const entry = all_entries[base_path]
+    const state = instance_states[instance_path]
+    const el = document.createElement('div')
+    el.className = `node type-${entry.type}`
+    el.dataset.instance_path = instance_path
+
+    const has_hubs = entry.hubs && entry.hubs.length > 0
+    const has_subs = entry.subs && entry.subs.length > 0
+    
+    if (depth) {
+      el.style.paddingLeft = '20px'
+    }
+
+    if (base_path === '/' && instance_path === '|/') {
+      const { expanded_subs } = state
+      const prefix_symbol = expanded_subs ? '🪄┬' : '🪄─'
+      const prefix_class = has_subs ? 'prefix clickable' : 'prefix'
+      el.innerHTML = `<span class="${prefix_class}">${prefix_symbol}</span><span class="name">/🌐</span>`
+      if (has_subs) {
+        el.querySelector('.prefix').onclick = () => toggle_subs(instance_path)
+        el.querySelector('.name').onclick = () => toggle_subs(instance_path)
+      }
+      return el
+    }
+
+    const prefix_symbol = get_prefix(is_last_sub, has_subs, state, is_hub)
+    const pipe_html = pipe_trail.map(should_pipe => `<span class=${should_pipe ? 'pipe' : 'blank'}>${should_pipe ? '│' : ' '}</span>`).join('')
+    
+    const prefix_class = (!has_hubs || base_path !== '/') ? 'prefix clickable' : 'prefix'
+    const icon_class = has_subs ? 'icon clickable' : 'icon'
+
+    el.innerHTML = `
+      <span class="indent">${pipe_html}</span>
+      <span class="${prefix_class}">${prefix_symbol}</span>
+      <span class="${icon_class}"></span>
+      <span class="name">${entry.name}</span>
+    `
+    if(has_hubs && base_path !== '/') el.querySelector('.prefix').onclick = () => toggle_hubs(instance_path)
+    if(has_subs) el.querySelector('.icon').onclick = () => toggle_subs(instance_path)
+    return el
   }
-  function get_full_path(entry) {
-    return entry.path + entry.name + '/'
+
+  function toggle_subs(instance_path) {
+    const state = instance_states[instance_path]
+    if (state) {
+      state.expanded_subs = !state.expanded_subs
+      build_and_render_view(instance_path)
+    }
+  }
+
+  function toggle_hubs(instance_path) {
+    const state = instance_states[instance_path]
+    if (state) {
+      state.expanded_hubs = !state.expanded_hubs
+      build_and_render_view(instance_path)
+    }
   }
 }
 
@@ -1165,73 +1321,56 @@ function fallback_module() {
   return {
     api: fallback_instance
   }
-  
   function fallback_instance() {
     return {
       drive: {
+        'entries/': {
+          'entries.json': { $ref: 'entries.json' }
+        },
         'style/': {
           'theme.css': {
             raw: `
-              .graph-explorer {
-                height: 300px;
-                overflow: auto;
-                font-family: monospace;
-                color: #eee;
-                background-color: #2d3440;
-                user-select: none;
-              }
-              
-              .explorer-container {
+              .graph-container {
+                color: #abb2bf;
+                background-color: #282c34;
                 padding: 10px;
-                height: 300px;
+                height: 500px; /* Or make it flexible */
+                overflow: auto;
               }
-              
-              .explorer-node {
+              .node {
                 display: flex;
                 align-items: center;
-                padding: 2px 0;
                 white-space: nowrap;
+                cursor: default;
+                height: 22px; /* Important for scroll calculation */
+              }
+              .indent {
+                display: flex;
+              }
+              .pipe {
+                text-align: center;
+              }
+              .blank {
+                width: 10px;
+                text-align: center;
+              }
+              .clickable {
                 cursor: pointer;
               }
-              
-              .explorer-node:hover {
-                background-color: rgba(255, 255, 255, 0.1);
-              }
-              
-              .tree-prefix {
-                margin-right: 4px;
-                opacity: 0.7;
-                cursor: pointer;
-              }
-              
-              .node-icon {
+              .prefix, .icon {
                 margin-right: 6px;
-                cursor: pointer;
               }
-              
-              .node-name {
-                overflow: hidden;
-                text-overflow: ellipsis;
-              }
+              .icon { display: inline-block; text-align: center; }
+              .name { flex-grow: 1; }
+              .node.type-root > .icon::before { content: '🌐'; }
+              .node.type-folder > .icon::before { content: '📁'; }
+              .node.type-html-file > .icon::before { content: '📄'; }
+              .node.type-js-file > .icon::before { content: '📜'; }
+              .node.type-css-file > .icon::before { content: '🎨'; }
+              .node.type-json-file > .icon::before { content: '📝'; }
+              .node.type-file > .icon::before { content: '📄'; }
+              .sentinel { height: 1px; }
             `
-          }
-        },
-        'entries/': {
-          'graph.json': {
-            '$ref': 'entries.json'
-          }
-        },
-        'icons/': {
-          'folder_icons.json': {
-            raw: `{
-              "root": "🌐",
-              "folder": "📁",
-              "file": "📄",
-              "html-file": "📄",
-              "js-file": "📄",
-              "css-file": "🖌️",
-              "json-file": "🎨"
-            }`
           }
         }
       }
@@ -1328,18 +1467,15 @@ async function input_test (opts, protocol) {
         : 'Input disabled for this step'
     }
   }
-}
 
-function fallback_module() {
+}
+function fallback_module () {
   return {
-    api: fallback_instance
+    api: fallback_instance,
   }
-  function fallback_instance() {
+  function fallback_instance () {
     return {
       drive: {
-        'entries/': {
-          'entries.json': { $ref: 'entries.json' }
-        },
         'style/': {
           'theme.css': {
             raw: `
@@ -1383,8 +1519,8 @@ function fallback_module() {
   }
 }
 
-}).call(this)}).call(this,"/src/node_modules/graph_explorer/graph_explorer.js")
-},{"STATE":1}],6:[function(require,module,exports){
+}).call(this)}).call(this,"/src/node_modules/input_test.js")
+},{"STATE":1}],8:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1966,6 +2102,12 @@ async function quick_actions(opts, protocol) {
       <div class="input-display">
         <span class="slash-prefix">/</span>
         <span class="command-text"></span>
+        <span class="step-display" style="display: none;">
+          <span>steps:<span>
+          <span class="current-step">1</span>
+          <span class="step-separator">-</span>
+          <span class="total-step">1</span>
+        </span>
         <input class="input-field" type="text" placeholder="Type to search actions...">
       </div>
       <button class="submit-btn" style="display: none;"></button>
@@ -1982,6 +2124,9 @@ async function quick_actions(opts, protocol) {
   const input_field = shadow.querySelector('.input-field')
   const submit_btn = shadow.querySelector('.submit-btn')
   const close_btn = shadow.querySelector('.close-btn')
+  const step_display = shadow.querySelector('.step-display')
+  const current_step = shadow.querySelector('.current-step')
+  const total_steps = shadow.querySelector('.total-step')
   const style = shadow.querySelector('style')
   const main = shadow.querySelector('.main')
 
@@ -2068,13 +2213,18 @@ async function quick_actions(opts, protocol) {
     if (selected_action) {
       slash_prefix.style.display = 'inline'
       command_text.style.display = 'inline'
-      command_text.textContent = `"${selected_action.action}"`
+      command_text.textContent = `#${selected_action.action}`
+      current_step.textContent = selected_action?.current_step || 1
+      total_steps.textContent = selected_action.total_steps
+      step_display.style.display = 'inline-flex'
+      
       input_field.style.display = 'none'
     } else {
       slash_prefix.style.display = 'none'
       command_text.style.display = 'none'
       input_field.style.display = 'block'
       submit_btn.style.display = 'none'
+      step_display.style.display = 'none'
       input_field.placeholder = 'Type to search actions...'
     }
   }
@@ -2317,6 +2467,28 @@ function fallback_module() {
                 width: 16px;
                 height: 16px;
               }
+              .step-display {
+                display: inline-flex;
+                align-items: center;
+                gap: 2px;
+                margin-left: 8px;
+                background: #2d2d2d;
+                border: 1px solid #666;
+                border-radius: 4px;
+                padding: 1px 6px;
+                font-size: 12px;
+                color: #fff;
+                font-family: monospace;
+              }
+              .current-step {
+                color:#f0f0f0;
+              }
+              .step-separator {
+                color: #888;
+              }
+              .total-step {
+                color: #f0f0f0;
+              }
             `
           }
         }
@@ -2325,7 +2497,7 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/quick_actions/quick_actions.js")
-},{"STATE":1}],8:[function(require,module,exports){
+},{"STATE":1}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -2607,7 +2779,7 @@ function fallback_module(){
   }
 }
 }).call(this)}).call(this,"/src/node_modules/quick_editor.js")
-},{"STATE":1}],9:[function(require,module,exports){
+},{"STATE":1}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -2937,46 +3109,51 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/space.js")
-},{"STATE":1,"actions":3,"console_history":4,"graph_explorer":5,"tabbed_editor":11}],10:[function(require,module,exports){
+},{"STATE":1,"actions":3,"console_history":4,"graph_explorer":6,"tabbed_editor":14}],13:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 
-const actions = require('actions')
-
-
 module.exports = steps_wizard
 
-async function steps_wizard (opts) {
+async function steps_wizard (opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const {drive} = sdb
+  
   const on = {
     style: inject
+  }
+
+  let variables = []
+
+  let _ = null
+  if(protocol){
+    send = protocol(msg => onmessage(msg))
+    _ = { up: send }
   }
 
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
   <div class="steps-wizard main">
-    <div class="actions-slot"></div>
+    <div class="steps-slot"></div>
   </div>
   <style>
   </style>
   `
 
   const style = shadow.querySelector('style')
-  const main = shadow.querySelector('.main')
-  const actions_slot = shadow.querySelector('.actions-slot')
-
-
+  const steps_entries = shadow.querySelector('.steps-slot')
+  
   const subs = await sdb.watch(onbatch)
 
-  let actions_el = null
+  // for demo purpose
+  render_steps([
+    {name: "Optional Step", "type": "optional", "is_completed": false, "component": "form_input", "status": "default", "data": ""},
+	  {name: "Step 2", "type": "mandatory", "is_completed": false, "component": "form_input", "status": "default", "data": ""}
+  ])
 
-  actions_el = await actions(subs[0])
-  actions_slot.replaceWith(actions_el)
-  
   return el
   
   function onmessage ({ type, data }) {
@@ -3045,46 +3222,20 @@ async function steps_wizard (opts) {
       return document.createElement('style').textContent = data[0]
     })())
   }
+ 
 }
 
 function fallback_module () {
   return {
-    api: fallback_instance,
-    _: {
-      'actions': {
-        $: ''
-      },
-    }
+    api: fallback_instance
   }
 
   function fallback_instance () {
     return {
-      _: {
-        'actions': {
-          0: '',
-          mapping: {
-            'style': 'style',
-            'actions': 'actions',
-            'icons': 'icons',
-            'hardcons': 'hardcons'
-          }
-        }
-      },
       drive: {
         'style/': {
           'stepswizard.css': {
-            raw: `
-              .steps-wizard {
-                display: flex;
-                flex-direction: column;
-                width: 100%;
-                height: 100%;
-                background: #131315;
-              }
-              .space{
-                height: inherit;
-                }
-            `
+            '$ref': 'stepswizard.css' 
           }
         }
       }
@@ -3093,7 +3244,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/steps_wizard/steps_wizard.js")
-},{"STATE":1,"actions":3}],11:[function(require,module,exports){
+},{"STATE":1}],14:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3487,7 +3638,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor/tabbed_editor.js")
-},{"STATE":1}],12:[function(require,module,exports){
+},{"STATE":1}],15:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3699,7 +3850,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/tabs.js")
-},{"STATE":1}],13:[function(require,module,exports){
+},{"STATE":1}],16:[function(require,module,exports){
 (function (__filename){(function (){
 const state = require('STATE')
 const state_db = state(__filename)
@@ -3882,7 +4033,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/tabsbar/tabsbar.js")
-},{"STATE":1,"tabs":12,"task_manager":14}],14:[function(require,module,exports){
+},{"STATE":1,"tabs":15,"task_manager":17}],17:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3975,7 +4126,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager.js")
-},{"STATE":1}],15:[function(require,module,exports){
+},{"STATE":1}],18:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4133,7 +4284,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/taskbar.js")
-},{"STATE":1,"action_bar":2,"tabsbar":13}],16:[function(require,module,exports){
+},{"STATE":1,"action_bar":2,"tabsbar":16}],19:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4269,7 +4420,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/theme_widget.js")
-},{"STATE":1,"space":9,"taskbar":15}],17:[function(require,module,exports){
+},{"STATE":1,"space":12,"taskbar":18}],20:[function(require,module,exports){
 const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/main/'
 const init_url = location.hash === '#dev' ? 'web/init.js' : prefix + 'src/node_modules/init.js'
 const args = arguments
@@ -4290,7 +4441,7 @@ fetch(init_url, fetch_opts).then(res => res.text()).then(async source => {
   require('./page') // or whatever is otherwise the main entry of our project
 })
 
-},{"./page":18}],18:[function(require,module,exports){
+},{"./page":21}],21:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
@@ -4313,6 +4464,7 @@ const task_manager = require('../src/node_modules/task_manager')
 const quick_actions = require('../src/node_modules/quick_actions')
 const graph_explorer = require('../src/node_modules/graph_explorer')
 const editor = require('../src/node_modules/quick_editor')
+const program = require('../src/node_modules/program')
 const steps_wizard = require('../src/node_modules/steps_wizard')
 
 const imports = {
@@ -4328,6 +4480,7 @@ const imports = {
   task_manager,
   quick_actions,
   graph_explorer,
+  program,
   steps_wizard,
 }
 config().then(() => boot({ sid: '' }))
@@ -4589,7 +4742,8 @@ function fallback_module () {
     '../src/node_modules/task_manager',
     '../src/node_modules/quick_actions',
     '../src/node_modules/graph_explorer',
-    '../src/node_modules/steps_wizard'
+    '../src/node_modules/program',
+    '../src/node_modules/steps_wizard',
   ]
   const subs = {}
   names.forEach(subgen)
@@ -4600,6 +4754,21 @@ function fallback_module () {
       'icons': 'icons',
       'variables': 'variables',
       'scroll': 'scroll',
+      'style': 'style'
+    }
+  }
+  subs['../src/node_modules/program'] = {
+    $: '',
+    0: '',
+    mapping: {
+      'variables': 'variables',
+      'style': 'style'
+    }
+  }
+  subs['../src/node_modules/steps_wizard'] = {
+    $: '',
+    0: '',
+    mapping: {
       'style': 'style'
     }
   }
@@ -4823,4 +4992,4 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/actions":3,"../src/node_modules/console_history":4,"../src/node_modules/graph_explorer":5,"../src/node_modules/menu":6,"../src/node_modules/quick_actions":7,"../src/node_modules/quick_editor":8,"../src/node_modules/space":9,"../src/node_modules/steps_wizard":10,"../src/node_modules/tabbed_editor":11,"../src/node_modules/tabs":12,"../src/node_modules/tabsbar":13,"../src/node_modules/task_manager":14,"../src/node_modules/taskbar":15,"../src/node_modules/theme_widget":16}]},{},[17]);
+},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/actions":3,"../src/node_modules/console_history":4,"../src/node_modules/graph_explorer":6,"../src/node_modules/menu":8,"../src/node_modules/program":9,"../src/node_modules/quick_actions":10,"../src/node_modules/quick_editor":11,"../src/node_modules/space":12,"../src/node_modules/steps_wizard":13,"../src/node_modules/tabbed_editor":14,"../src/node_modules/tabs":15,"../src/node_modules/tabsbar":16,"../src/node_modules/task_manager":17,"../src/node_modules/taskbar":18,"../src/node_modules/theme_widget":19}]},{},[20]);
