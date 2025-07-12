@@ -832,6 +832,7 @@ async function form_input (opts, protocol) {
   }
 
   let current_step = null
+  let input_accessible = true
 	
 	if(protocol){
     send = protocol(msg => onmessage(msg))
@@ -845,14 +846,17 @@ async function form_input (opts, protocol) {
     <div class='test'>
       <input class="input-field" type="text" placeholder="Type to submit">
     </div>
+    <div class="overlay-lock" hidden></div>
   </div>
   <style>
   </style>`
   const style = shadow.querySelector('style')
   
 	const input_field_el = shadow.querySelector('.input-field')
+  const overlay_el = shadow.querySelector('.overlay-lock')
 
 	input_field_el.oninput = function () {
+    if (!input_accessible) return
 		if (this.value.length >= 10) {
 			_.up({
         type: 'action_submitted',
@@ -892,6 +896,13 @@ async function form_input (opts, protocol) {
       current_step = data
       console.log('message from form_input', input_field_el, input_field_el.value)
       input_field_el.value = data?.data || ''
+      input_accessible = data?.is_accessible !== false
+      
+      overlay_el.hidden = input_accessible
+
+      input_field_el.placeholder = input_accessible
+        ? 'Type to submit'
+        : 'Input disabled for this step'
     }
   }
 
@@ -907,6 +918,7 @@ function fallback_module () {
           'theme.css': {
             raw: `
             .input-display {
+              position: relative;
 							background: #131315;
               border-radius: 16px;
               border: 1px solid #3c3c3c;
@@ -933,6 +945,13 @@ function fallback_module () {
 						.input-field::placeholder {
 							color: #a6a6a6;
 						}
+            .overlay-lock {
+              position: absolute;
+              inset: 0;
+              background: transparent;
+              z-index: 10;
+              cursor: not-allowed;
+            }
 						`
           }
         }
@@ -1273,7 +1292,8 @@ async function input_test (opts, protocol) {
   }
 
   let current_step = null
-	
+  let input_accessible = true
+  
 	if(protocol){
     send = protocol(msg => onmessage(msg))
     _ = { up: send }
@@ -1285,14 +1305,17 @@ async function input_test (opts, protocol) {
 	<div class='title'> Testing 2nd Type </div>
   <div class="input-display">
     <input class="input-field" type="text" placeholder="Type to submit">
+    <div class="overlay-lock" hidden></div>
   </div>
   <style>
   </style>`
   const style = shadow.querySelector('style')
   
 	const input_field_el = shadow.querySelector('.input-field')
+  const overlay_el = shadow.querySelector('.overlay-lock')
 
 	input_field_el.oninput = function () {
+    if (!input_accessible) return
 		if (this.value.length >= 10) {
 			_.up({
         type: 'action_submitted',
@@ -1331,6 +1354,14 @@ async function input_test (opts, protocol) {
     if (type === 'step_data') {
       current_step = data
       input_field_el.value = data?.data || ''
+      
+      input_accessible = data?.is_accessible !== false
+      
+      overlay_el.hidden = input_accessible
+
+      input_field_el.placeholder = input_accessible
+        ? 'Type to submit'
+        : 'Input disabled for this step'
     }
   }
 
@@ -1350,6 +1381,7 @@ function fallback_module () {
 							font-size: 18px;
 						}
             .input-display {
+              position: relative;
 							background: #131315;
               border-radius: 16px;
               border: 1px solid #3c3c3c;
@@ -1653,8 +1685,8 @@ const steps_wizard = require('steps_wizard')
 const input_test = require('input_test')
 
 const component_modules = {
-  'form_input': form_input,
-  'input_test': input_test
+  form_input,
+  input_test
   // Add more form input components here if needed
 }
 
@@ -1773,6 +1805,10 @@ async function program(opts) {
             data: data?.value
           })
           drive.put('variables/program.json', { change_path: variables })
+
+          if (variables[variables.length - 1]?.is_completed) {
+            _.send_quick_actions({ type: 'show_submit_btn' })
+          }
         }
       }
     }
@@ -1783,7 +1819,6 @@ async function program(opts) {
     return on
     function on({ type, data }) {
       if (type === 'step_clicked') {
-        console.log('step clicked data---------', type, data)
         _.send_quick_actions({
           type: 'update_steps',
           data: {
@@ -1794,6 +1829,7 @@ async function program(opts) {
         
         render_form_component(data.component)
         const send = _.send_form_input[data.component]
+        console.log('step_clicked_Data', data)
         if (send) send({ type: 'step_data', data })
       }
     }
@@ -1824,10 +1860,10 @@ async function program(opts) {
       _.send_steps_wizard({ type: 'init_data', data: variables })
       steps_toggle_view('block')
 
-      // render_form_component(data.component)
-      // const send = _.send_form_input[data.component]
-      // if (send) send({ type: 'step_data', data })
-
+      if (variables.length > 0) {
+        const firstStep = variables[0]
+        render_form_component(firstStep.component)
+      }
       actions_toggle_view('none')
     }
   }
@@ -1851,11 +1887,8 @@ async function program(opts) {
         cleanup()
       }
     } else if (type == 'action_submitted') {
-      const is_completed = variables[data?.total_steps - 1]?.is_completed
-      if (is_completed) {
-        alert(JSON.stringify(variables.map(step => step.data), null, 2))
-        _.send_quick_actions?.({ type: 'deactivate_input_field' })
-      }
+      alert(JSON.stringify(variables.map(step => step.data), null, 2))
+      _.send_quick_actions?.({ type: 'deactivate_input_field' })
     }
   }
 
@@ -2025,6 +2058,8 @@ async function quick_actions(opts, protocol) {
       selected_action.current_step = data.current_step
     } else if (type === 'deactivate_input_field') {
       deactivate_input_field()
+    } else if (type == 'show_submit_btn') {
+      show_submit_btn()
     }
   }
   function activate_input_field() {
@@ -2067,6 +2102,10 @@ async function quick_actions(opts, protocol) {
     update_input_display(selected_action)
   }
 
+  function show_submit_btn() {
+    submit_btn.style.display = 'flex'
+  }
+
   function update_input_display(selected_action = null) {
     if (selected_action) {
       slash_prefix.style.display = 'inline'
@@ -2077,7 +2116,6 @@ async function quick_actions(opts, protocol) {
       step_display.style.display = 'inline-flex'
       
       input_field.style.display = 'none'
-      submit_btn.style.display = 'flex'
     } else {
       slash_prefix.style.display = 'none'
       command_text.style.display = 'none'
@@ -3045,13 +3083,13 @@ async function steps_wizard (opts, protocol) {
       else if (step.type === 'optional') status = 'optional'
 
       btn.classList.add(`step-${status}`)
-      btn.disabled = (status === 'disabled')
+      // btn.disabled = (status === 'disabled')
 
       btn.onclick = async () => {
-        if (!btn.disabled) {
+        // if (!btn.disabled) {
           console.log('Clicked:', step)
-            _?.up({type: 'step_clicked', data: {...step, index, total_steps: steps.length}})
-        }
+          _?.up({type: 'step_clicked', data: {...step, index, total_steps: steps.length, is_accessible: accessible}})
+        
       };
 
       steps_entries.appendChild(btn)
