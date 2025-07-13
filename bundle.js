@@ -2,6 +2,438 @@
 
 },{}],2:[function(require,module,exports){
 (function (__filename){(function (){
+const STATE = require('./STATE')
+const statedb = STATE(__filename)
+const { get } = statedb(fallback_module)
+
+module.exports = graph_explorer
+
+async function graph_explorer(opts) {
+  const { sdb } = await get(opts.sid)
+  const { drive } = sdb
+
+  let vertical_scroll_value = 0
+  let horizontal_scroll_value = 0
+
+  const on = {
+    entries: on_entries,
+    style: inject_style
+  }
+
+  const el = document.createElement('div')
+  el.className = 'graph-explorer-wrapper'
+  el.onscroll = () => {
+    vertical_scroll_value = el.scrollTop
+    horizontal_scroll_value = el.scrollLeft
+  }
+  const shadow = el.attachShadow({ mode: 'closed' })
+  shadow.innerHTML = `<div class="graph-container"></div>`
+  const container = shadow.querySelector('.graph-container')
+
+  let all_entries = {}
+  let view = []
+  const instance_states = {}
+
+  let start_index = 0
+  let end_index = 0
+  const chunk_size = 50
+  const max_rendered_nodes = chunk_size * 3
+  const node_height = 22
+
+  const top_sentinel = document.createElement('div')
+  const bottom_sentinel = document.createElement('div')
+  top_sentinel.className = 'sentinel'
+  bottom_sentinel.className = 'sentinel'
+
+  const observer = new IntersectionObserver(handle_sentinel_intersection, {
+    root: el,
+    threshold: 0
+  })
+
+  await sdb.watch(onbatch)
+
+  return el
+
+  async function onbatch(batch) {
+    for (const { type, paths } of batch) {
+      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      const func = on[type] || fail
+      func(data, type)
+    }
+  }
+
+  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
+
+  function on_entries(data) {
+    all_entries = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
+    const root_path = '/'
+    if (all_entries[root_path]) {
+      if (!instance_states[root_path]) {
+        instance_states[root_path] = { expanded_subs: true, expanded_hubs: false }
+      }
+      build_and_render_view()
+    }
+  }
+
+  function inject_style(data) {
+    const sheet = new CSSStyleSheet()
+    sheet.replaceSync(data[0])
+    shadow.adoptedStyleSheets = [sheet]
+  }
+
+  function build_and_render_view(focal_instance_path = null) {
+    const old_view = [...view]
+    const old_scroll_top = vertical_scroll_value
+    const old_scroll_left = horizontal_scroll_value
+
+    view = build_view_recursive({
+      base_path: '/',
+      parent_instance_path: '',
+      depth: 0,
+      is_last_sub : true,
+      is_hub: false,
+      parent_pipe_trail: [],
+      instance_states,
+      all_entries
+    })
+
+    let focal_index = -1
+    if (focal_instance_path) {
+      focal_index = view.findIndex(
+        node => node.instance_path === focal_instance_path
+      )
+    }
+    if (focal_index === -1) {
+      focal_index = Math.floor(old_scroll_top / node_height)
+    }
+
+    const old_focal_node = old_view[focal_index]
+    let new_scroll_top = old_scroll_top
+
+    if (old_focal_node) {
+      const old_focal_instance_path = old_focal_node.instance_path
+      const new_focal_index = view.findIndex(
+        node => node.instance_path === old_focal_instance_path
+      )
+      if (new_focal_index !== -1) {
+        const scroll_diff = (new_focal_index - focal_index) * node_height
+        new_scroll_top = old_scroll_top + scroll_diff
+      }
+    }
+
+    start_index = Math.max(0, focal_index - Math.floor(chunk_size / 2))
+    end_index = start_index
+
+    container.replaceChildren()
+    container.appendChild(top_sentinel)
+    container.appendChild(bottom_sentinel)
+    observer.observe(top_sentinel)
+    observer.observe(bottom_sentinel)
+
+    render_next_chunk()
+
+    requestAnimationFrame(() => {
+      el.scrollTop = new_scroll_top
+      el.scrollLeft = old_scroll_left
+    })
+  }
+
+  function build_view_recursive({
+    base_path,
+    parent_instance_path,
+    parent_base_path = null,
+    depth,
+    is_last_sub,
+    is_hub,
+    is_first_hub = false,
+    parent_pipe_trail,
+    instance_states,
+    all_entries
+  }) {
+
+    const instance_path = `${parent_instance_path}|${base_path}`
+    const entry = all_entries[base_path]
+    if (!entry) return []
+
+    if (!instance_states[instance_path]) {
+      instance_states[instance_path] = {
+        expanded_subs: false,
+        expanded_hubs: false
+      }
+    }
+    const state = instance_states[instance_path]
+    const children_pipe_trail = [...parent_pipe_trail]
+    let last_pipe = null
+
+    if (depth > 0) {
+      if (is_hub) {
+        last_pipe = [...parent_pipe_trail]
+        if (is_last_sub) { 
+          children_pipe_trail.pop()
+          children_pipe_trail.push(is_last_sub)
+          last_pipe.pop()
+          last_pipe.push(true)
+          if (is_first_hub) {
+            last_pipe.pop()
+            last_pipe.push(false)
+          }
+        }
+        if (is_first_hub) {
+          children_pipe_trail.pop()
+          children_pipe_trail.push(false)
+        }
+      }
+      children_pipe_trail.push(!is_last_sub || is_hub)
+    }
+
+    let current_view = []
+    const is_hub_on_top = (base_path === all_entries[parent_base_path]?.hubs?.[0]) || (base_path === '/')
+    if (state.expanded_hubs && entry.hubs) {
+      entry.hubs.forEach((hub_path, i, arr) => {
+        current_view = current_view.concat(
+          build_view_recursive({
+            base_path: hub_path,
+            parent_instance_path: instance_path,
+            parent_base_path: base_path,
+            depth: depth + 1,
+            is_last_sub : i === arr.length - 1,
+            is_hub: true,
+            is_first_hub: is_hub ? is_hub_on_top : false,
+            parent_pipe_trail: children_pipe_trail,
+            instance_states,
+            all_entries
+          })
+        )
+      })
+    }
+
+    current_view.push({
+      base_path,
+      instance_path,
+      depth,
+      is_last_sub,
+      is_hub,
+      pipe_trail: (is_hub && is_last_sub) ? last_pipe : parent_pipe_trail
+    })
+
+    if (state.expanded_subs && entry.subs) {
+      entry.subs.forEach((sub_path, i, arr) => {
+        current_view = current_view.concat(
+          build_view_recursive({
+            base_path: sub_path,
+            parent_instance_path: instance_path,
+            depth: depth + 1,
+            is_last_sub: i === arr.length - 1,
+            is_hub: false,
+            parent_pipe_trail: children_pipe_trail,
+            instance_states,
+            all_entries
+          })
+        )
+      })
+    }
+    return current_view
+  }
+
+  function handle_sentinel_intersection(entries) {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        if (entry.target === top_sentinel) render_prev_chunk()
+        else if (entry.target === bottom_sentinel) render_next_chunk()
+      }
+    })
+  }
+
+  function render_next_chunk() {
+    if (end_index >= view.length) return
+    const fragment = document.createDocumentFragment()
+    const next_end = Math.min(view.length, end_index + chunk_size)
+    for (let i = end_index; i < next_end; i++) {
+      fragment.appendChild(create_node(view[i]))
+    }
+    container.insertBefore(fragment, bottom_sentinel)
+    end_index = next_end
+    cleanup_dom(false)
+  }
+
+  function render_prev_chunk() {
+    if (start_index <= 0) return
+    const fragment = document.createDocumentFragment()
+    const prev_start = Math.max(0, start_index - chunk_size)
+    for (let i = prev_start; i < start_index; i++) {
+      fragment.appendChild(create_node(view[i]))
+    }
+    const old_scroll_height = container.scrollHeight
+    const old_scroll_top = el.scrollTop
+    container.insertBefore(fragment, top_sentinel.nextSibling)
+    start_index = prev_start
+    cleanup_dom(true)
+    el.scrollTop = old_scroll_top + (container.scrollHeight - old_scroll_height)
+  }
+
+  function cleanup_dom(is_scrolling_up) {
+    const rendered_count = end_index - start_index
+    if (rendered_count < max_rendered_nodes) return
+    const to_remove_count = rendered_count - max_rendered_nodes
+    if (is_scrolling_up) {
+      for (let i = 0; i < to_remove_count; i++) {
+        bottom_sentinel.previousElementSibling.remove()
+      }
+      end_index -= to_remove_count
+    } else {
+      for (let i = 0; i < to_remove_count; i++) {
+        top_sentinel.nextElementSibling.remove()
+      }
+      start_index += to_remove_count
+    }
+  }
+
+  function get_prefix(is_last_sub, has_subs, state, is_hub) {
+    const { expanded_subs, expanded_hubs } = state
+    if (is_hub) {
+      if (expanded_subs && expanded_hubs) return '┌┼'
+      if (expanded_subs) return '┌┬'
+      if (expanded_hubs) return '┌┴'
+      return '┌─'
+    } else if (is_last_sub) {
+      if (expanded_subs && expanded_hubs) return '└┼'
+      if (expanded_subs) return '└┬'
+      if (expanded_hubs) return '└┴'
+      return '└─'
+    } else {
+      if (expanded_subs && expanded_hubs) return '├┼'
+      if (expanded_subs) return '├┬'
+      if (expanded_hubs) return '├┴'
+      return '├─'
+    }
+  }
+
+  function create_node({ base_path, instance_path, depth, is_last_sub, is_hub, pipe_trail }) {
+    const entry = all_entries[base_path]
+    const state = instance_states[instance_path]
+    const el = document.createElement('div')
+    el.className = `node type-${entry.type}`
+    el.dataset.instance_path = instance_path
+
+    const has_hubs = entry.hubs && entry.hubs.length > 0
+    const has_subs = entry.subs && entry.subs.length > 0
+    
+    if (depth) {
+      el.style.paddingLeft = '20px'
+    }
+
+    if (base_path === '/' && instance_path === '|/') {
+      const { expanded_subs } = state
+      const prefix_symbol = expanded_subs ? '🪄┬' : '🪄─'
+      const prefix_class = has_subs ? 'prefix clickable' : 'prefix'
+      el.innerHTML = `<span class="${prefix_class}">${prefix_symbol}</span><span class="name">/🌐</span>`
+      if (has_subs) {
+        el.querySelector('.prefix').onclick = () => toggle_subs(instance_path)
+        el.querySelector('.name').onclick = () => toggle_subs(instance_path)
+      }
+      return el
+    }
+
+    const prefix_symbol = get_prefix(is_last_sub, has_subs, state, is_hub)
+    const pipe_html = pipe_trail.map(should_pipe => `<span class=${should_pipe ? 'pipe' : 'blank'}>${should_pipe ? '│' : ' '}</span>`).join('')
+    
+    const prefix_class = (!has_hubs || base_path !== '/') ? 'prefix clickable' : 'prefix'
+    const icon_class = has_subs ? 'icon clickable' : 'icon'
+
+    el.innerHTML = `
+      <span class="indent">${pipe_html}</span>
+      <span class="${prefix_class}">${prefix_symbol}</span>
+      <span class="${icon_class}"></span>
+      <span class="name">${entry.name}</span>
+    `
+    if(has_hubs && base_path !== '/') el.querySelector('.prefix').onclick = () => toggle_hubs(instance_path)
+    if(has_subs) el.querySelector('.icon').onclick = () => toggle_subs(instance_path)
+    return el
+  }
+
+  function toggle_subs(instance_path) {
+    const state = instance_states[instance_path]
+    if (state) {
+      state.expanded_subs = !state.expanded_subs
+      build_and_render_view(instance_path)
+    }
+  }
+
+  function toggle_hubs(instance_path) {
+    const state = instance_states[instance_path]
+    if (state) {
+      state.expanded_hubs = !state.expanded_hubs
+      build_and_render_view(instance_path)
+    }
+  }
+}
+
+function fallback_module() {
+  return {
+    api: fallback_instance
+  }
+  function fallback_instance() {
+    return {
+      drive: {
+        'entries/': {
+          'entries.json': { $ref: 'entries.json' }
+        },
+        'style/': {
+          'theme.css': {
+            raw: `
+              .graph-container {
+                color: #abb2bf;
+                background-color: #282c34;
+                padding: 10px;
+                height: 500px; /* Or make it flexible */
+                overflow: auto;
+              }
+              .node {
+                display: flex;
+                align-items: center;
+                white-space: nowrap;
+                cursor: default;
+                height: 22px; /* Important for scroll calculation */
+              }
+              .indent {
+                display: flex;
+              }
+              .pipe {
+                text-align: center;
+              }
+              .blank {
+                width: 10px;
+                text-align: center;
+              }
+              .clickable {
+                cursor: pointer;
+              }
+              .prefix, .icon {
+                margin-right: 6px;
+              }
+              .icon { display: inline-block; text-align: center; }
+              .name { flex-grow: 1; }
+              .node.type-root > .icon::before { content: '🌐'; }
+              .node.type-folder > .icon::before { content: '📁'; }
+              .node.type-html-file > .icon::before { content: '📄'; }
+              .node.type-js-file > .icon::before { content: '📜'; }
+              .node.type-css-file > .icon::before { content: '🎨'; }
+              .node.type-json-file > .icon::before { content: '📝'; }
+              .node.type-file > .icon::before { content: '📄'; }
+              .sentinel { height: 1px; }
+            `
+          }
+        }
+      }
+    }
+  }
+}
+
+}).call(this)}).call(this,"/node_modules/graph-explorer/lib/graph_explorer.js")
+},{"./STATE":1}],3:[function(require,module,exports){
+arguments[4][1][0].apply(exports,arguments)
+},{"dup":1}],4:[function(require,module,exports){
+(function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
@@ -175,7 +607,7 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/action_bar/action_bar.js")
-},{"STATE":1,"quick_actions":7}],3:[function(require,module,exports){
+},{"STATE":3,"quick_actions":8}],5:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -481,7 +913,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/actions/actions.js")
-},{"STATE":1}],4:[function(require,module,exports){
+},{"STATE":3}],6:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -816,437 +1248,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/console_history/console_history.js")
-},{"STATE":1}],5:[function(require,module,exports){
-(function (__filename){(function (){
-const STATE = require('STATE')
-const statedb = STATE(__filename)
-const { get } = statedb(fallback_module)
-
-module.exports = graph_explorer
-
-async function graph_explorer(opts) {
-  const { sdb } = await get(opts.sid)
-  const { drive } = sdb
-
-  let vertical_scroll_value = 0
-  let horizontal_scroll_value = 0
-
-  const on = {
-    entries: on_entries,
-    style: inject_style
-  }
-
-  const el = document.createElement('div')
-  el.className = 'graph-explorer-wrapper'
-  el.onscroll = () => {
-    vertical_scroll_value = el.scrollTop
-    horizontal_scroll_value = el.scrollLeft
-  }
-  const shadow = el.attachShadow({ mode: 'closed' })
-  shadow.innerHTML = `<div class="graph-container"></div>`
-  const container = shadow.querySelector('.graph-container')
-
-  let all_entries = {}
-  let view = []
-  const instance_states = {}
-
-  let start_index = 0
-  let end_index = 0
-  const chunk_size = 50
-  const max_rendered_nodes = chunk_size * 3
-  const node_height = 22
-
-  const top_sentinel = document.createElement('div')
-  const bottom_sentinel = document.createElement('div')
-  top_sentinel.className = 'sentinel'
-  bottom_sentinel.className = 'sentinel'
-
-  const observer = new IntersectionObserver(handle_sentinel_intersection, {
-    root: el,
-    threshold: 0
-  })
-
-  await sdb.watch(onbatch)
-
-  return el
-
-  async function onbatch(batch) {
-    for (const { type, paths } of batch) {
-      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
-      const func = on[type] || fail
-      func(data, type)
-    }
-  }
-
-  function fail (data, type) { throw new Error('invalid message', { cause: { data, type } }) }
-
-  function on_entries(data) {
-    all_entries = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
-    const root_path = '/'
-    if (all_entries[root_path]) {
-      if (!instance_states[root_path]) {
-        instance_states[root_path] = { expanded_subs: true, expanded_hubs: false }
-      }
-      build_and_render_view()
-    }
-  }
-
-  function inject_style(data) {
-    const sheet = new CSSStyleSheet()
-    sheet.replaceSync(data[0])
-    shadow.adoptedStyleSheets = [sheet]
-  }
-
-  function build_and_render_view(focal_instance_path = null) {
-    const old_view = [...view]
-    const old_scroll_top = vertical_scroll_value
-    const old_scroll_left = horizontal_scroll_value
-
-    view = build_view_recursive({
-      base_path: '/',
-      parent_instance_path: '',
-      depth: 0,
-      is_last_sub : true,
-      is_hub: false,
-      parent_pipe_trail: [],
-      instance_states,
-      all_entries
-    })
-
-    let focal_index = -1
-    if (focal_instance_path) {
-      focal_index = view.findIndex(
-        node => node.instance_path === focal_instance_path
-      )
-    }
-    if (focal_index === -1) {
-      focal_index = Math.floor(old_scroll_top / node_height)
-    }
-
-    const old_focal_node = old_view[focal_index]
-    let new_scroll_top = old_scroll_top
-
-    if (old_focal_node) {
-      const old_focal_instance_path = old_focal_node.instance_path
-      const new_focal_index = view.findIndex(
-        node => node.instance_path === old_focal_instance_path
-      )
-      if (new_focal_index !== -1) {
-        const scroll_diff = (new_focal_index - focal_index) * node_height
-        new_scroll_top = old_scroll_top + scroll_diff
-      }
-    }
-
-    start_index = Math.max(0, focal_index - Math.floor(chunk_size / 2))
-    end_index = start_index
-
-    container.replaceChildren()
-    container.appendChild(top_sentinel)
-    container.appendChild(bottom_sentinel)
-    observer.observe(top_sentinel)
-    observer.observe(bottom_sentinel)
-
-    render_next_chunk()
-
-    requestAnimationFrame(() => {
-      el.scrollTop = new_scroll_top
-      el.scrollLeft = old_scroll_left
-    })
-  }
-
-  function build_view_recursive({
-    base_path,
-    parent_instance_path,
-    parent_base_path = null,
-    depth,
-    is_last_sub,
-    is_hub,
-    is_first_hub = false,
-    parent_pipe_trail,
-    instance_states,
-    all_entries
-  }) {
-
-    const instance_path = `${parent_instance_path}|${base_path}`
-    const entry = all_entries[base_path]
-    if (!entry) return []
-
-    if (!instance_states[instance_path]) {
-      instance_states[instance_path] = {
-        expanded_subs: false,
-        expanded_hubs: false
-      }
-    }
-    const state = instance_states[instance_path]
-    const children_pipe_trail = [...parent_pipe_trail]
-    let last_pipe = null
-
-    if (depth > 0) {
-      if (is_hub) {
-        last_pipe = [...parent_pipe_trail]
-        if (is_last_sub) { 
-          children_pipe_trail.pop()
-          children_pipe_trail.push(is_last_sub)
-          last_pipe.pop()
-          last_pipe.push(true)
-          if (is_first_hub) {
-            last_pipe.pop()
-            last_pipe.push(false)
-          }
-        }
-        if (is_first_hub) {
-          children_pipe_trail.pop()
-          children_pipe_trail.push(false)
-        }
-      }
-      children_pipe_trail.push(!is_last_sub || is_hub)
-    }
-
-    let current_view = []
-    const is_hub_on_top = (base_path === all_entries[parent_base_path]?.hubs?.[0]) || (base_path === '/')
-    if (state.expanded_hubs && entry.hubs) {
-      entry.hubs.forEach((hub_path, i, arr) => {
-        current_view = current_view.concat(
-          build_view_recursive({
-            base_path: hub_path,
-            parent_instance_path: instance_path,
-            parent_base_path: base_path,
-            depth: depth + 1,
-            is_last_sub : i === arr.length - 1,
-            is_hub: true,
-            is_first_hub: is_hub ? is_hub_on_top : false,
-            parent_pipe_trail: children_pipe_trail,
-            instance_states,
-            all_entries
-          })
-        )
-      })
-    }
-
-    current_view.push({
-      base_path,
-      instance_path,
-      depth,
-      is_last_sub,
-      is_hub,
-      pipe_trail: (is_hub && is_last_sub) ? last_pipe : parent_pipe_trail
-    })
-
-    if (state.expanded_subs && entry.subs) {
-      entry.subs.forEach((sub_path, i, arr) => {
-        current_view = current_view.concat(
-          build_view_recursive({
-            base_path: sub_path,
-            parent_instance_path: instance_path,
-            depth: depth + 1,
-            is_last_sub: i === arr.length - 1,
-            is_hub: false,
-            parent_pipe_trail: children_pipe_trail,
-            instance_states,
-            all_entries
-          })
-        )
-      })
-    }
-    return current_view
-  }
-
-  function handle_sentinel_intersection(entries) {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        if (entry.target === top_sentinel) render_prev_chunk()
-        else if (entry.target === bottom_sentinel) render_next_chunk()
-      }
-    })
-  }
-
-  function render_next_chunk() {
-    if (end_index >= view.length) return
-    const fragment = document.createDocumentFragment()
-    const next_end = Math.min(view.length, end_index + chunk_size)
-    for (let i = end_index; i < next_end; i++) {
-      fragment.appendChild(create_node(view[i]))
-    }
-    container.insertBefore(fragment, bottom_sentinel)
-    end_index = next_end
-    cleanup_dom(false)
-  }
-
-  function render_prev_chunk() {
-    if (start_index <= 0) return
-    const fragment = document.createDocumentFragment()
-    const prev_start = Math.max(0, start_index - chunk_size)
-    for (let i = prev_start; i < start_index; i++) {
-      fragment.appendChild(create_node(view[i]))
-    }
-    const old_scroll_height = container.scrollHeight
-    const old_scroll_top = el.scrollTop
-    container.insertBefore(fragment, top_sentinel.nextSibling)
-    start_index = prev_start
-    el.scrollTop = old_scroll_top + (container.scrollHeight - old_scroll_height)
-    cleanup_dom(true)
-  }
-
-  function cleanup_dom(is_scrolling_up) {
-    const rendered_count = end_index - start_index
-    if (rendered_count < max_rendered_nodes) return
-    const to_remove_count = rendered_count - max_rendered_nodes
-    if (is_scrolling_up) {
-      for (let i = 0; i < to_remove_count; i++) {
-        bottom_sentinel.previousElementSibling.remove()
-      }
-      end_index -= to_remove_count
-    } else {
-      for (let i = 0; i < to_remove_count; i++) {
-        top_sentinel.nextElementSibling.remove()
-      }
-      start_index += to_remove_count
-    }
-  }
-
-  function get_prefix(is_last_sub, has_subs, state, is_hub) {
-    const { expanded_subs, expanded_hubs } = state
-    if (is_hub) {
-      if (expanded_subs && expanded_hubs) return '┌┼'
-      if (expanded_subs) return '┌┬'
-      if (expanded_hubs) return '┌┴'
-      return '┌─'
-    } else if (is_last_sub) {
-      if (expanded_subs && expanded_hubs) return '└┼'
-      if (expanded_subs) return '└┬'
-      if (expanded_hubs) return '└┴'
-      return '└─'
-    } else {
-      if (expanded_subs && expanded_hubs) return '├┼'
-      if (expanded_subs) return '├┬'
-      if (expanded_hubs) return '├┴'
-      return '├─'
-    }
-  }
-
-  function create_node({ base_path, instance_path, depth, is_last_sub, is_hub, pipe_trail }) {
-    const entry = all_entries[base_path]
-    const state = instance_states[instance_path]
-    const el = document.createElement('div')
-    el.className = `node type-${entry.type}`
-    el.dataset.instance_path = instance_path
-
-    const has_hubs = entry.hubs && entry.hubs.length > 0
-    const has_subs = entry.subs && entry.subs.length > 0
-    
-    if (depth) {
-      el.style.paddingLeft = '20px'
-    }
-
-    if (base_path === '/' && instance_path === '|/') {
-      const { expanded_subs } = state
-      const prefix_symbol = expanded_subs ? '🪄┬' : '🪄─'
-      const prefix_class = has_subs ? 'prefix clickable' : 'prefix'
-      el.innerHTML = `<span class="${prefix_class}">${prefix_symbol}</span><span class="name">/🌐</span>`
-      if (has_subs) {
-        el.querySelector('.prefix').onclick = () => toggle_subs(instance_path)
-        el.querySelector('.name').onclick = () => toggle_subs(instance_path)
-      }
-      return el
-    }
-
-    const prefix_symbol = get_prefix(is_last_sub, has_subs, state, is_hub)
-    const pipe_html = pipe_trail.map(should_pipe => `<span class=${should_pipe ? 'pipe' : 'blank'}>${should_pipe ? '│' : ' '}</span>`).join('')
-    
-    const prefix_class = (!has_hubs || base_path !== '/') ? 'prefix clickable' : 'prefix'
-    const icon_class = has_subs ? 'icon clickable' : 'icon'
-
-    el.innerHTML = `
-      <span class="indent">${pipe_html}</span>
-      <span class="${prefix_class}">${prefix_symbol}</span>
-      <span class="${icon_class}"></span>
-      <span class="name">${entry.name}</span>
-    `
-    if(has_hubs && base_path !== '/') el.querySelector('.prefix').onclick = () => toggle_hubs(instance_path)
-    if(has_subs) el.querySelector('.icon').onclick = () => toggle_subs(instance_path)
-    return el
-  }
-
-  function toggle_subs(instance_path) {
-    const state = instance_states[instance_path]
-    if (state) {
-      state.expanded_subs = !state.expanded_subs
-      build_and_render_view(instance_path)
-    }
-  }
-
-  function toggle_hubs(instance_path) {
-    const state = instance_states[instance_path]
-    if (state) {
-      state.expanded_hubs = !state.expanded_hubs
-      build_and_render_view(instance_path)
-    }
-  }
-}
-
-function fallback_module() {
-  return {
-    api: fallback_instance
-  }
-  function fallback_instance() {
-    return {
-      drive: {
-        'entries/': {
-          'entries.json': { $ref: 'entries.json' }
-        },
-        'style/': {
-          'theme.css': {
-            raw: `
-              .graph-container {
-                color: #abb2bf;
-                background-color: #282c34;
-                padding: 10px;
-                height: 500px; /* Or make it flexible */
-                overflow: auto;
-              }
-              .node {
-                display: flex;
-                align-items: center;
-                white-space: nowrap;
-                cursor: default;
-                height: 22px; /* Important for scroll calculation */
-              }
-              .indent {
-                display: flex;
-              }
-              .pipe {
-                text-align: center;
-              }
-              .blank {
-                width: 10px;
-                text-align: center;
-              }
-              .clickable {
-                cursor: pointer;
-              }
-              .prefix, .icon {
-                margin-right: 6px;
-              }
-              .icon { display: inline-block; text-align: center; }
-              .name { flex-grow: 1; }
-              .node.type-root > .icon::before { content: '🌐'; }
-              .node.type-folder > .icon::before { content: '📁'; }
-              .node.type-html-file > .icon::before { content: '📄'; }
-              .node.type-js-file > .icon::before { content: '📜'; }
-              .node.type-css-file > .icon::before { content: '🎨'; }
-              .node.type-json-file > .icon::before { content: '📝'; }
-              .node.type-file > .icon::before { content: '📄'; }
-              .sentinel { height: 1px; }
-            `
-          }
-        }
-      }
-    }
-  }
-}
-
-}).call(this)}).call(this,"/src/node_modules/graph_explorer/graph_explorer.js")
-},{"STATE":1}],6:[function(require,module,exports){
+},{"STATE":3}],7:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1501,7 +1503,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/menu.js")
-},{"STATE":1}],7:[function(require,module,exports){
+},{"STATE":3}],8:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -1880,7 +1882,7 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/quick_actions/quick_actions.js")
-},{"STATE":1}],8:[function(require,module,exports){
+},{"STATE":3}],9:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -2162,7 +2164,7 @@ function fallback_module(){
   }
 }
 }).call(this)}).call(this,"/src/node_modules/quick_editor.js")
-},{"STATE":1}],9:[function(require,module,exports){
+},{"STATE":3}],10:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -2171,7 +2173,7 @@ const { sdb, get } = statedb(fallback_module)
 const console_history = require('console_history')
 const actions = require('actions')
 const tabbed_editor = require('tabbed_editor')
-const graph_explorer = require('graph_explorer')
+const graph_explorer = require('../../node_modules/graph-explorer')
 
 module.exports = component
 
@@ -2390,7 +2392,7 @@ function fallback_module () {
       'tabbed_editor': {
         $: ''
       },
-      'graph_explorer': {
+      '../../node_modules/graph-explorer': {
         $: ''
       }
     }
@@ -2426,7 +2428,7 @@ function fallback_module () {
             'active_tab': 'active_tab'
           }
         },
-        'graph_explorer': {
+        '../../node_modules/graph-explorer': {
           0: '',
           mapping: {
             'style': 'style',
@@ -2492,7 +2494,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/space.js")
-},{"STATE":1,"actions":3,"console_history":4,"graph_explorer":5,"tabbed_editor":11}],10:[function(require,module,exports){
+},{"../../node_modules/graph-explorer":2,"STATE":3,"actions":5,"console_history":6,"tabbed_editor":12}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -2595,7 +2597,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/steps_wizard/steps_wizard.js")
-},{"STATE":1,"actions":3}],11:[function(require,module,exports){
+},{"STATE":3,"actions":5}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -2989,7 +2991,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor/tabbed_editor.js")
-},{"STATE":1}],12:[function(require,module,exports){
+},{"STATE":3}],13:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3201,7 +3203,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/tabs.js")
-},{"STATE":1}],13:[function(require,module,exports){
+},{"STATE":3}],14:[function(require,module,exports){
 (function (__filename){(function (){
 const state = require('STATE')
 const state_db = state(__filename)
@@ -3384,7 +3386,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/tabsbar/tabsbar.js")
-},{"STATE":1,"tabs":12,"task_manager":14}],14:[function(require,module,exports){
+},{"STATE":3,"tabs":13,"task_manager":15}],15:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3477,7 +3479,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager.js")
-},{"STATE":1}],15:[function(require,module,exports){
+},{"STATE":3}],16:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3635,7 +3637,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/taskbar.js")
-},{"STATE":1,"action_bar":2,"tabsbar":13}],16:[function(require,module,exports){
+},{"STATE":3,"action_bar":4,"tabsbar":14}],17:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3771,7 +3773,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/theme_widget.js")
-},{"STATE":1,"space":9,"taskbar":15}],17:[function(require,module,exports){
+},{"STATE":3,"space":10,"taskbar":16}],18:[function(require,module,exports){
 const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/main/'
 const init_url = location.hash === '#dev' ? 'web/init.js' : prefix + 'src/node_modules/init.js'
 const args = arguments
@@ -3792,7 +3794,7 @@ fetch(init_url, fetch_opts).then(res => res.text()).then(async source => {
   require('./page') // or whatever is otherwise the main entry of our project
 })
 
-},{"./page":18}],18:[function(require,module,exports){
+},{"./page":19}],19:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
@@ -3813,7 +3815,7 @@ const actions = require('../src/node_modules/actions')
 const tabbed_editor = require('../src/node_modules/tabbed_editor')
 const task_manager = require('../src/node_modules/task_manager')
 const quick_actions = require('../src/node_modules/quick_actions')
-const graph_explorer = require('../src/node_modules/graph_explorer')
+const graph_explorer = require('../node_modules/graph-explorer')
 const editor = require('../src/node_modules/quick_editor')
 const steps_wizard = require('../src/node_modules/steps_wizard')
 
@@ -4090,7 +4092,7 @@ function fallback_module () {
     '../src/node_modules/tabbed_editor',
     '../src/node_modules/task_manager',
     '../src/node_modules/quick_actions',
-    '../src/node_modules/graph_explorer',
+    '../node_modules/graph-explorer',
     '../src/node_modules/steps_wizard'
   ]
   const subs = {}
@@ -4169,7 +4171,7 @@ function fallback_module () {
       'hardcons': 'hardcons'
     }
   }
-  subs['../src/node_modules/graph_explorer'] = {
+  subs['../node_modules/graph-explorer'] = {
     $: '',
     0: '',
     mapping: {
@@ -4325,4 +4327,4 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/actions":3,"../src/node_modules/console_history":4,"../src/node_modules/graph_explorer":5,"../src/node_modules/menu":6,"../src/node_modules/quick_actions":7,"../src/node_modules/quick_editor":8,"../src/node_modules/space":9,"../src/node_modules/steps_wizard":10,"../src/node_modules/tabbed_editor":11,"../src/node_modules/tabs":12,"../src/node_modules/tabsbar":13,"../src/node_modules/task_manager":14,"../src/node_modules/taskbar":15,"../src/node_modules/theme_widget":16}]},{},[17]);
+},{"../node_modules/graph-explorer":2,"../src/node_modules/STATE":3,"../src/node_modules/action_bar":4,"../src/node_modules/actions":5,"../src/node_modules/console_history":6,"../src/node_modules/menu":7,"../src/node_modules/quick_actions":8,"../src/node_modules/quick_editor":9,"../src/node_modules/space":10,"../src/node_modules/steps_wizard":11,"../src/node_modules/tabbed_editor":12,"../src/node_modules/tabs":13,"../src/node_modules/tabsbar":14,"../src/node_modules/task_manager":15,"../src/node_modules/taskbar":16,"../src/node_modules/theme_widget":17}]},{},[18]);
