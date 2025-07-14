@@ -17,7 +17,7 @@ const actions = require('../src/node_modules/actions')
 const tabbed_editor = require('../src/node_modules/tabbed_editor')
 const task_manager = require('../src/node_modules/task_manager')
 const quick_actions = require('../src/node_modules/quick_actions')
-const graph_explorer = require('../src/node_modules/graph_explorer')
+const graph_explorer = require('../node_modules/graph-explorer')
 const editor = require('../src/node_modules/quick_editor')
 const steps_wizard = require('../src/node_modules/steps_wizard')
 
@@ -301,7 +301,7 @@ function fallback_module () {
     '../src/node_modules/tabbed_editor',
     '../src/node_modules/task_manager',
     '../src/node_modules/quick_actions',
-    '../src/node_modules/graph_explorer',
+    '../node_modules/graph-explorer',
     '../src/node_modules/steps_wizard'
   ]
   const subs = {}
@@ -380,7 +380,7 @@ function fallback_module () {
       'hardcons': 'hardcons'
     }
   }
-  subs['../src/node_modules/graph_explorer'] = {
+  subs['../node_modules/graph-explorer'] = {
     $: '',
     0: '',
     mapping: {
@@ -436,6 +436,7 @@ function fallback_module () {
           }
       
           .component-wrapper {
+            position: relative;
             padding: 15px;
             border: 3px solid #666;
             resize: both;
@@ -489,10 +490,6 @@ function fallback_module () {
         input:checked + .slider::before {
           transform: translateX(24px);
         }
-        .component-wrapper {
-        position: relative;
-        overflow: visible;
-      }
       .component-wrapper:hover::before {
         content: '';
         position: absolute;
@@ -502,7 +499,9 @@ function fallback_module () {
         left: 0;
         border: 4px solid skyblue;
         pointer-events: none;
-        z-index: 4;
+        z-index: 15;
+        resize: both;
+        overflow: auto;
       }
       .component-wrapper:hover .quick-editor {
         display: block;
@@ -512,7 +511,7 @@ function fallback_module () {
         position: absolute;
         top: -5px;
         right: -10px;
-        z-index: 5;
+        z-index: 16;
       }`
         }
       }
