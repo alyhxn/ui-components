@@ -17,9 +17,10 @@ const actions = require('../src/node_modules/actions')
 const tabbed_editor = require('../src/node_modules/tabbed_editor')
 const task_manager = require('../src/node_modules/task_manager')
 const quick_actions = require('../src/node_modules/quick_actions')
-const graph_explorer = require('../node_modules/graph-explorer')
+const graph_explorer = require('../src/node_modules/graph-explorer')
 const editor = require('../src/node_modules/quick_editor')
 const steps_wizard = require('../src/node_modules/steps_wizard')
+const { resource } = require('../src/node_modules/helpers')
 
 const imports = {
   theme_widget,
@@ -65,7 +66,8 @@ async function boot (opts) {
   // ----------------------------------------
   const on = {
     style: inject,
-    ...sdb.admin.status.dataset.drive
+    ...sdb.admin.status.dataset.drive,
+    ...sdb.admin
   }
   // const status = {}
   // ----------------------------------------
@@ -121,8 +123,10 @@ async function boot (opts) {
     on_label_click: handle_label_click,
     on_select_all_toggle: handle_select_all_toggle
   }
+  const item = resource()
   io.on(port => {
     const { by, to } = port
+    item.set(port.to, port)
     port.onmessage = event => {
       const txt = event.data
       const key = `[${by} -> ${to}]`
@@ -156,7 +160,6 @@ async function create_component (entries_obj) {
     `
     const inner = outer.querySelector('.component-wrapper')
     const component_content = await factory(subs[index])
-    console.log('component_content', index)
     component_content.className = 'component-content'
     
     const node_id = admin.status.s2i[subs[index].sid]
@@ -184,8 +187,8 @@ async function create_component (entries_obj) {
     }
     
     
-
-    const port = await io.at(editor_id)
+    const port = await item.get(editor_id)
+    // await io.at(editor_id)
     port.postMessage(result)
 
     components_wrapper.appendChild(outer)
@@ -277,7 +280,6 @@ async function create_component (entries_obj) {
   async function onbatch(batch) {
     for (const { type, paths } of batch){
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
-      console.log('onbatch', type, data)
       const func = on[type] || fail
       func(data, type)
     }
@@ -301,11 +303,12 @@ function fallback_module () {
     '../src/node_modules/tabbed_editor',
     '../src/node_modules/task_manager',
     '../src/node_modules/quick_actions',
-    '../node_modules/graph-explorer',
+    '../src/node_modules/graph-explorer',
     '../src/node_modules/steps_wizard'
   ]
   const subs = {}
   names.forEach(subgen)
+  subs['../src/node_modules/helpers'] = 0
   subs['../src/node_modules/tabs'] = {
     $: '',
     0: '',
@@ -380,7 +383,7 @@ function fallback_module () {
       'hardcons': 'hardcons'
     }
   }
-  subs['../node_modules/graph-explorer'] = {
+  subs['../src/node_modules/graph-explorer'] = {
     $: '',
     0: '',
     mapping: {
@@ -440,7 +443,7 @@ function fallback_module () {
             padding: 15px;
             border: 3px solid #666;
             resize: both;
-            overflow: auto;
+            overflow: visible;
             border-radius: 0px;
             background-color: #eceff4;
             min-height: 50px;
