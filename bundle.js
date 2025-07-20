@@ -175,7 +175,7 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/action_bar/action_bar.js")
-},{"STATE":1,"quick_actions":10}],3:[function(require,module,exports){
+},{"STATE":1,"quick_actions":11}],3:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -230,9 +230,25 @@ async function actions(opts, protocol) {
       case 'send_selected_action':
         send_selected_action(data)
         break
+      case 'load_actions':
+        // Handle the new data format from program_protocol
+        handleLoadActions(data)
+        break
       default:
         fail(data, type)
     }
+  }
+
+  function handleLoadActions(data) {   
+    const converted_actions = Object.keys(data).map(actionKey => ({
+      action: actionKey,
+      pinned: false,
+      default: true,
+      icon: 'file'
+    }))
+    
+    actions = converted_actions
+    create_actions_menu()
   }
   
   function send_selected_action (msg) {
@@ -1533,6 +1549,304 @@ const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 
+const quick_actions = require('quick_actions')
+const actions = require('actions')
+const form_input = require('form_input')
+const input_test = require('input_test')
+const program = require('program')
+
+const component_modules = {
+  form_input,
+  input_test
+  // Add more form input components here if needed
+}
+
+module.exports = manager
+
+async function manager(opts) {
+  const { id, sdb } = await get(opts.sid)
+  const { drive } = sdb
+
+  const on = {
+    style: inject,
+  }
+
+  let variables = []
+  let selected_action = null
+
+  const _ = {
+    send_quick_actions: null,
+    send_actions: null,
+    send_form_input: {},
+    send_steps_wizard: null,
+    send_program: null
+  }
+
+  const el = document.createElement('div')
+  const shadow = el.attachShadow({ mode: 'closed' })
+  shadow.innerHTML = `
+    <div class="main">
+      <form-input></form-input>
+      <actions></actions>
+      <quick-actions></quick-actions>
+      <program></program>
+    </div>
+    <style></style>
+  `
+
+  const style = shadow.querySelector('style')
+  const actions_placeholder = shadow.querySelector('actions')
+  const quick_actions_placeholder = shadow.querySelector('quick-actions')
+  const form_input_placeholder = shadow.querySelector('form-input')
+  const program_placeholder = shadow.querySelector('program')
+
+  const subs = await sdb.watch(onbatch)
+
+  
+  const actions_el = await actions(subs[0], actions_protocol)
+  actions_el.classList.add('hide')
+  actions_placeholder.replaceWith(actions_el)
+
+  const quick_actions_el = await quick_actions(subs[1], quick_actions_protocol)
+  quick_actions_placeholder.replaceWith(quick_actions_el)
+  
+  const program_el = await program(subs[2], program_protocol)
+  program_el.classList.add('hide')
+  program_placeholder.replaceWith(program_el)
+
+
+  const form_input_elements = {}
+
+  for (const [component_name, component_fn] of Object.entries(component_modules)) {
+    const index = get_form_input_component_index(component_name)
+    const el = await component_fn(subs[index], form_input_protocol(component_name))
+    el.classList.add('hide')
+    form_input_elements[component_name] = el
+    form_input_placeholder.parentNode.insertBefore(el, form_input_placeholder)
+  }
+
+  form_input_placeholder.remove()
+
+  return el
+
+  // --- Internal Functions ---
+  async function onbatch(batch) {
+    for (const { type, paths } of batch) {
+      const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
+      const func = on[type] || fail
+      func(data, type)
+    }
+  }
+
+  function fail(data, type) {
+    throw new Error('invalid message', { cause: { data, type } })
+  }
+
+  function inject(data) {
+    style.replaceChildren((() => {
+      return document.createElement('style').textContent = data[0]
+    })())
+  }
+
+  function toggle_view(el, show) {
+    el.classList.toggle('hide', !show)
+  }
+
+  function actions_toggle_view(display) {
+    toggle_view(actions_el, display === 'block')
+  }
+
+  function form_input_protocol(component_name) {
+    return function (send) {
+      _.send_form_input[component_name] = send
+      return function on({ type, data }) {
+        if (type === 'action_submitted') {
+          const step = variables[selected_action][data?.index]
+          Object.assign(step, {
+            is_completed: true,
+            status: 'completed',
+            data: data?.value
+          })
+          _.send_quick_actions({ type: "init_data", data: variables[selected_action] })
+
+          if (variables[selected_action][variables[selected_action].length - 1]?.is_completed) {
+            _.send_quick_actions({ type: 'show_submit_btn' })
+          }
+        }
+      }
+    }
+  }
+
+  function render_form_component(component_name) {
+    for (const name in form_input_elements) {
+      toggle_view(form_input_elements[name], name === component_name)
+    }
+  }
+
+  function get_form_input_component_index(component) {
+    const { _: components } = fallback_module()
+    return Object.keys(components).indexOf(component)
+  }
+
+  function program_protocol(send) {
+    _.send_program = send
+    return on
+    function on({ type, data }) {
+      if (type === 'load_actions') {
+        variables = data
+        _.send_actions?.({ type, data })
+      }
+    }
+  }
+
+  function actions_protocol(send) {
+    _.send_actions = send
+    return on
+    function on({ type, data }) {
+      console.log('actions_protocol', type, data)
+      selected_action = data?.action || null
+      _.send_quick_actions({
+        type,
+        data: {
+          ...data,
+          steps_info: variables[selected_action] || [],
+          total_steps: variables[selected_action].length || 0
+        }
+      })
+   
+      if (variables[selected_action].length > 0) {
+        const firstStep = variables[selected_action][0]
+        render_form_component(firstStep.component)
+        const send = _.send_form_input[firstStep.component]
+        if (send) send({ type: 'step_data', data: firstStep })
+      }
+      actions_toggle_view('none')
+    }
+  }
+
+  function quick_actions_protocol(send) {
+    _.send_quick_actions = send
+    return on
+    function on({ type, data }) {
+      on_quick_actions_message({ type, data })
+    }
+  }
+
+  function on_quick_actions_message({ type, data }) {
+    if (type == 'display_actions') {
+      actions_toggle_view(data)
+      if (data === 'none') {
+        for (const el of Object.values(form_input_elements)) {
+          toggle_view(el, false)
+        }
+        cleanup()
+      }
+    } else if (type == 'action_submitted') {
+      const result = JSON.stringify(variables[selected_action].map(step => step.data), null, 2)
+      _.send_program({ type: 'display_result', data: { result, selected_action }})
+      
+      _.send_quick_actions?.({ type: 'deactivate_input_field' })
+    } else if (type == 'render_form') {
+      render_form_component(data.component)
+      const send = _.send_form_input[data.component]
+      if (send) send({ type: 'step_data', data })
+    }
+  }
+
+  function cleanup() {
+    console.log('Cleaning up variables for selected action:', selected_action, variables[selected_action])
+    const cleaned = variables[selected_action].map(step => ({
+      ...step,
+      is_completed: false,
+      data: ''
+    }))
+    variables[selected_action] = cleaned
+  }
+}
+
+// --- Fallback Module ---
+function fallback_module() {
+  return {
+    api: fallback_instance,
+    _: {
+      'actions': { $: '' },
+      'quick_actions': { $: '' },
+      'program': { $: '' },
+      'form_input': { $: '' },
+      'input_test': { $: '' }
+    }
+  }
+
+  function fallback_instance() {
+    return {
+      _: {
+        'actions': {
+          0: '',
+          mapping: {
+            'style': 'style',
+            'actions': 'actions',
+            'icons': 'icons',
+            'hardcons': 'hardcons'
+          }
+        },
+        'quick_actions': {
+          0: '',
+          mapping: {
+            'style': 'style',
+            'icons': 'icons',
+            'actions': 'actions',
+            'hardcons': 'hardcons'
+          }
+        },
+        'program': {
+          0: '',
+          mapping: {
+            'style': 'style',
+            'variables': 'variables',
+          }
+        },
+        'form_input': {
+          0: '',
+          mapping: {
+            'style': 'style'
+          }
+        },
+        'input_test': {
+          0: '',
+          mapping: {
+            'style': 'style'
+          }
+        }
+      },
+      drive: {
+        'style/': {
+          'manager.css': { 
+            raw: `
+              .main {
+                display: flex;
+                flex-direction: column;
+                width: 100%;
+                height: 100%;
+                background: #131315;
+              }
+              .hide {
+                display: none;
+              }
+            ` 
+          }
+        }
+      }
+    }
+  }
+}
+
+}).call(this)}).call(this,"/src/node_modules/manager/manager.js")
+},{"STATE":1,"actions":3,"form_input":5,"input_test":7,"program":10,"quick_actions":11}],9:[function(require,module,exports){
+(function (__filename){(function (){
+const STATE = require('STATE')
+const statedb = STATE(__filename)
+const { sdb, get } = statedb(fallback_module)
+
 module.exports = create_component_menu
 async function create_component_menu (opts, names, inicheck, callbacks) {
   const { id, sdb } = await get(opts.sid)
@@ -1782,27 +2096,16 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/menu.js")
-},{"STATE":1}],9:[function(require,module,exports){
+},{"STATE":1}],10:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 
-const quick_actions = require('quick_actions')
-const actions = require('actions')
-const form_input = require('form_input')
-const steps_wizard = require('steps_wizard')
-const input_test = require('input_test')
-
-const component_modules = {
-  form_input,
-  input_test
-  // Add more form input components here if needed
-}
 
 module.exports = program
 
-async function program(opts) {
+async function program(opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
 
@@ -1811,57 +2114,24 @@ async function program(opts) {
     variables: onvariables,
   }
 
-  let variables = []
-
   const _ = {
-    send_quick_actions: null,
-    send_actions: null,
-    send_form_input: {},
-    send_steps_wizard: null
+    up: null,
+  }
+
+  if (protocol) {
+    const send = protocol((msg) => onmessage(msg))
+    _.up = send
   }
 
   const el = document.createElement('div')
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
-    <div class="main">
-      <form-input></form-input>
-      <actions></actions>
-      <steps-wizard></steps-wizard>
-      <quick-actions></quick-actions>
-    </div>
     <style></style>
   `
 
   const style = shadow.querySelector('style')
-  const steps_wizard_placeholder = shadow.querySelector('steps-wizard')
-  const quick_actions_placeholder = shadow.querySelector('quick-actions')
-  const actions_placeholder = shadow.querySelector('actions')
-  const form_input_placeholder = shadow.querySelector('form-input')
-
+  
   const subs = await sdb.watch(onbatch)
-
-  const quick_actions_el = await quick_actions(subs[0], quick_actions_protocol)
-  quick_actions_placeholder.replaceWith(quick_actions_el)
-
-  const actions_el = await actions(subs[1], actions_protocol)
-  actions_el.classList.add('hide')
-  actions_placeholder.replaceWith(actions_el)
-
-  const steps_wizard_el = await steps_wizard(subs[2], steps_wizard_protocol)
-  steps_wizard_el.classList.add('hide')
-  steps_wizard_placeholder.replaceWith(steps_wizard_el)
-
-  const form_input_elements = {}
-
-  for (const [component_name, component_fn] of Object.entries(component_modules)) {
-    const index = get_form_input_component_index(component_name)
-    const el = await component_fn(subs[index], form_input_protocol(component_name))
-    el.classList.add('hide')
-    form_input_elements[component_name] = el
-    form_input_placeholder.parentNode.insertBefore(el, form_input_placeholder)
-  }
-
-  form_input_placeholder.remove()
 
   return el
 
@@ -1886,129 +2156,17 @@ async function program(opts) {
 
   function onvariables(data) {
     const vars = typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
-    variables = vars['change_path']
-    if (_.send_steps_wizard)
-      _.send_steps_wizard({ type: "init_data", data: variables })
+    _?.up({
+      type: 'load_actions',
+      data: vars,
+    })
   }
 
-  function toggle_view(el, show) {
-    el.classList.toggle('hide', !show)
-  }
-
-  function steps_toggle_view(display) {
-    toggle_view(steps_wizard_el, display === 'block')
-  }
-
-  function actions_toggle_view(display) {
-    toggle_view(actions_el, display === 'block')
-  }
-
-  function form_input_protocol(component_name) {
-    return function (send) {
-      _.send_form_input[component_name] = send
-      return function on({ type, data }) {
-        if (type === 'action_submitted') {
-          const step = variables[data?.index]
-          Object.assign(step, {
-            is_completed: true,
-            status: 'completed',
-            data: data?.value
-          })
-          drive.put('variables/program.json', { change_path: variables })
-
-          if (variables[variables.length - 1]?.is_completed) {
-            _.send_quick_actions({ type: 'show_submit_btn' })
-          }
-        }
-      }
+  function onmessage({ type, data }) {
+    if (type == 'display_result') {
+      console.log('Display Result:', data)
+      alert(`Result of action(${data?.selected_action}): ${data?.result}`)
     }
-  }
-
-  function steps_wizard_protocol(send) {
-    _.send_steps_wizard = send
-    return on
-    function on({ type, data }) {
-      if (type === 'step_clicked') {
-        _.send_quick_actions({
-          type: 'update_steps',
-          data: {
-            current_step: data?.index + 1,
-            total_steps: data?.total_steps
-          }
-        })
-        
-        render_form_component(data.component)
-        const send = _.send_form_input[data.component]
-        console.log('step_clicked_Data', data)
-        if (send) send({ type: 'step_data', data })
-      }
-    }
-  }
-
-  function render_form_component(component_name) {
-    for (const name in form_input_elements) {
-      toggle_view(form_input_elements[name], name === component_name)
-    }
-  }
-
-  function get_form_input_component_index(component) {
-    const { _: components } = fallback_module()
-    return Object.keys(components).indexOf(component)
-  }
-
-  function actions_protocol(send) {
-    _.send_actions = send
-    return on
-    function on({ type, data }) {
-      _.send_quick_actions({
-        type,
-        data: {
-          ...data,
-          total_steps: variables.length
-        }
-      })
-      _.send_steps_wizard({ type: 'init_data', data: variables })
-      steps_toggle_view('block')
-
-      if (variables.length > 0) {
-        const firstStep = variables[0]
-        render_form_component(firstStep.component)
-      }
-      actions_toggle_view('none')
-    }
-  }
-
-  function quick_actions_protocol(send) {
-    _.send_quick_actions = send
-    return on
-    function on({ type, data }) {
-      on_quick_actions_message({ type, data })
-    }
-  }
-
-  function on_quick_actions_message({ type, data }) {
-    if (type == 'display_actions') {
-      actions_toggle_view(data)
-      if (data === 'none') {
-        steps_toggle_view(data)
-        for (const el of Object.values(form_input_elements)) {
-          toggle_view(el, false)
-        }
-        cleanup()
-      }
-    } else if (type == 'action_submitted') {
-      alert(JSON.stringify(variables.map(step => step.data), null, 2))
-      _.send_quick_actions?.({ type: 'deactivate_input_field' })
-    }
-  }
-
-  function cleanup() {
-    const cleaned = variables.map(step => ({
-      ...step,
-      is_completed: false,
-      data: ''
-    }))
-    drive.put('variables/program.json', { change_path: cleaned })
   }
 }
 
@@ -2016,59 +2174,21 @@ async function program(opts) {
 function fallback_module() {
   return {
     api: fallback_instance,
-    _: {
-      'quick_actions': { $: '' },
-      'actions': { $: '' },
-      'steps_wizard': { $: '' },
-      'form_input': { $: '' },
-      'input_test': { $: '' }
-    }
   }
 
   function fallback_instance() {
     return {
-      _: {
-        'quick_actions': {
-          0: '',
-          mapping: {
-            'style': 'style',
-            'icons': 'icons',
-            'actions': 'actions',
-            'hardcons': 'hardcons'
-          }
-        },
-        'actions': {
-          0: '',
-          mapping: {
-            'style': 'style',
-            'actions': 'actions',
-            'icons': 'icons',
-            'hardcons': 'hardcons'
-          }
-        },
-        'steps_wizard': {
-          0: '',
-          mapping: {
-            'style': 'style',
-            'variables': 'variables'
-          }
-        },
-        'form_input': {
-          0: '',
-          mapping: {
-            'style': 'style'
-          }
-        },
-        'input_test': {
-          0: '',
-          mapping: {
-            'style': 'style'
-          }
-        }
-      },
       drive: {
         'style/': {
-          'program.css': { '$ref': 'program.css' }
+          'program.css': { 
+            raw: `
+              .main {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+              }
+            ` 
+          }
         },
         'variables/': {
           'program.json': { '$ref': 'program.json' }
@@ -2079,12 +2199,14 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program/program.js")
-},{"STATE":1,"actions":3,"form_input":5,"input_test":7,"quick_actions":10,"steps_wizard":13}],10:[function(require,module,exports){
+},{"STATE":1}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 module.exports = quick_actions
+
+const steps_wizard = require('steps_wizard')
 
 async function quick_actions(opts, protocol) {
   const { id, sdb } = await get(opts.sid)
@@ -2102,23 +2224,26 @@ async function quick_actions(opts, protocol) {
   
   
   shadow.innerHTML = `
-  <div class="quick-actions-container main">
-    <div class="default-actions"></div>
-    <div class="text-bar" role="button"></div>
-    <div class="input-wrapper" style="display: none;">
-      <div class="input-display">
-        <span class="slash-prefix">/</span>
-        <span class="command-text"></span>
-        <span class="step-display" style="display: none;">
-          <span>steps:<span>
-          <span class="current-step">1</span>
-          <span class="step-separator">-</span>
-          <span class="total-step">1</span>
-        </span>
-        <input class="input-field" type="text" placeholder="Type to search actions...">
+  <div>
+    <steps-wizard></steps-wizard>
+    <div class="quick-actions-container main">
+      <div class="default-actions"></div>
+      <div class="text-bar" role="button"></div>
+      <div class="input-wrapper" style="display: none;">
+        <div class="input-display">
+          <span class="slash-prefix">/</span>
+          <span class="command-text"></span>
+          <span class="step-display" style="display: none;">
+            <span>steps:<span>
+            <span class="current-step">1</span>
+            <span class="step-separator">-</span>
+            <span class="total-step">1</span>
+          </span>
+          <input class="input-field" type="text" placeholder="Type to search actions...">
+        </div>
+        <button class="submit-btn" style="display: none;"></button>
+        <button class="close-btn"></button>
       </div>
-      <button class="submit-btn" style="display: none;"></button>
-      <button class="close-btn"></button>
     </div>
   </div>
   <style>
@@ -2137,6 +2262,7 @@ async function quick_actions(opts, protocol) {
   const style = shadow.querySelector('style')
   const main = shadow.querySelector('.main')
 
+  const steps_wizard_placeholder = shadow.querySelector('steps-wizard')
   
   let init = false
   let icons = {}
@@ -2145,10 +2271,13 @@ async function quick_actions(opts, protocol) {
   let selected_action = null
   
   let send = null
-  let _ = null
+  const _ = {
+    up: null,
+    send_steps_wizard: null
+  }
   if(protocol){
     send = protocol(msg => onmessage(msg))
-    _ = { up: send }
+    _.up = send
   }
   text_bar.onclick = activate_input_field
   close_btn.onclick = deactivate_input_field
@@ -2156,6 +2285,11 @@ async function quick_actions(opts, protocol) {
   input_field.oninput = oninput
 
   const subs = await sdb.watch(onbatch)
+
+  const steps_wizard_el = await steps_wizard(subs[0], steps_wizard_protocol)
+  steps_wizard_el.classList.add('hide')
+  steps_wizard_placeholder.replaceWith(steps_wizard_el)
+
   submit_btn.innerHTML = hardcons.submit
   close_btn.innerHTML = hardcons.cross
   return el
@@ -2163,13 +2297,12 @@ async function quick_actions(opts, protocol) {
   function onmessage ({ type, data }) {
     if (type === 'selected_action') {
       select_action(data)
-    } else if (type === 'update_steps') {
-      current_step.textContent = data.current_step
-      selected_action.current_step = data.current_step
     } else if (type === 'deactivate_input_field') {
       deactivate_input_field()
     } else if (type == 'show_submit_btn') {
       show_submit_btn()
+    } else if (type === 'init_data') {
+      _?.send_steps_wizard({ type, data })
     }
   }
   function activate_input_field() {
@@ -2205,11 +2338,15 @@ async function quick_actions(opts, protocol) {
     selected_action = null
     update_input_display()
     
+    steps_toggle_view('none')
     _.up({ type: 'display_actions', data: 'none' })
   }
+
   function select_action(action) {
     selected_action = action
     update_input_display(selected_action)
+    _.send_steps_wizard({ type: 'init_data', data: selected_action.steps_info })
+    steps_toggle_view('block')
   }
 
   function show_submit_btn() {
@@ -2280,15 +2417,52 @@ async function quick_actions(opts, protocol) {
     
     close_btn.innerHTML = icons['close']
   }
+
+  function toggle_view(el, show) {
+    el.classList.toggle('hide', !show)
+  }
+
+  function steps_toggle_view(display) {
+    toggle_view(steps_wizard_el, display === 'block')
+  }
+
+  
+  function steps_wizard_protocol(send) {
+    _.send_steps_wizard = send
+    return on
+    function on({ type, data }) {
+      if (type === 'step_clicked') {
+        let current_step_value = data?.index + 1 || 1
+
+        current_step.textContent = current_step_value
+        selected_action.current_step = current_step_value
+        console.log('quick-actions-steps-clicked--- ', current_step_value)
+        _.up({type: 'render_form', data})
+      }
+    }
+  }
+
 }
 
 function fallback_module() {
   return {
-    api: fallback_instance
+    api: fallback_instance,
+    _: {
+      'steps_wizard': { $: '' },
+    }
   }
 
   function fallback_instance() {
     return {
+      _: {
+        'steps_wizard': {
+          0: '',
+          mapping: {
+            'style': 'style',
+            'variables': 'variables'
+          }
+        }
+      },
       drive: {
         'icons/': {
           '0.svg': {
@@ -2496,6 +2670,9 @@ function fallback_module() {
               .total-step {
                 color: #f0f0f0;
               }
+              .hide {
+                display: none;
+              }
             `
           }
         }
@@ -2504,7 +2681,7 @@ function fallback_module() {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/quick_actions/quick_actions.js")
-},{"STATE":1}],11:[function(require,module,exports){
+},{"STATE":1,"steps_wizard":14}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -2786,7 +2963,7 @@ function fallback_module(){
   }
 }
 }).call(this)}).call(this,"/src/node_modules/quick_editor.js")
-},{"STATE":1}],12:[function(require,module,exports){
+},{"STATE":1}],13:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3116,7 +3293,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/space.js")
-},{"STATE":1,"actions":3,"console_history":4,"graph_explorer":6,"tabbed_editor":14}],13:[function(require,module,exports){
+},{"STATE":1,"actions":3,"console_history":4,"graph_explorer":6,"tabbed_editor":15}],14:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3248,7 +3425,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/steps_wizard/steps_wizard.js")
-},{"STATE":1}],14:[function(require,module,exports){
+},{"STATE":1}],15:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3642,7 +3819,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor/tabbed_editor.js")
-},{"STATE":1}],15:[function(require,module,exports){
+},{"STATE":1}],16:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3854,7 +4031,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/tabs.js")
-},{"STATE":1}],16:[function(require,module,exports){
+},{"STATE":1}],17:[function(require,module,exports){
 (function (__filename){(function (){
 const state = require('STATE')
 const state_db = state(__filename)
@@ -4037,7 +4214,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/tabsbar/tabsbar.js")
-},{"STATE":1,"tabs":15,"task_manager":17}],17:[function(require,module,exports){
+},{"STATE":1,"tabs":16,"task_manager":18}],18:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4130,7 +4307,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager.js")
-},{"STATE":1}],18:[function(require,module,exports){
+},{"STATE":1}],19:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4288,7 +4465,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/taskbar.js")
-},{"STATE":1,"action_bar":2,"tabsbar":16}],19:[function(require,module,exports){
+},{"STATE":1,"action_bar":2,"tabsbar":17}],20:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4424,7 +4601,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/theme_widget.js")
-},{"STATE":1,"space":12,"taskbar":18}],20:[function(require,module,exports){
+},{"STATE":1,"space":13,"taskbar":19}],21:[function(require,module,exports){
 const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/main/'
 const init_url = location.hash === '#dev' ? 'web/init.js' : prefix + 'src/node_modules/init.js'
 const args = arguments
@@ -4445,7 +4622,7 @@ fetch(init_url, fetch_opts).then(res => res.text()).then(async source => {
   require('./page') // or whatever is otherwise the main entry of our project
 })
 
-},{"./page":21}],21:[function(require,module,exports){
+},{"./page":22}],22:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
@@ -4468,7 +4645,7 @@ const task_manager = require('../src/node_modules/task_manager')
 const quick_actions = require('../src/node_modules/quick_actions')
 const graph_explorer = require('../src/node_modules/graph_explorer')
 const editor = require('../src/node_modules/quick_editor')
-const program = require('../src/node_modules/program')
+const manager = require('../src/node_modules/manager')
 const steps_wizard = require('../src/node_modules/steps_wizard')
 
 const imports = {
@@ -4484,7 +4661,7 @@ const imports = {
   task_manager,
   quick_actions,
   graph_explorer,
-  program,
+  manager,
   steps_wizard,
 }
 config().then(() => boot({ sid: '' }))
@@ -4746,7 +4923,7 @@ function fallback_module () {
     '../src/node_modules/task_manager',
     '../src/node_modules/quick_actions',
     '../src/node_modules/graph_explorer',
-    '../src/node_modules/program',
+    '../src/node_modules/manager',
     '../src/node_modules/steps_wizard',
   ]
   const subs = {}
@@ -4761,11 +4938,10 @@ function fallback_module () {
       'style': 'style'
     }
   }
-  subs['../src/node_modules/program'] = {
+  subs['../src/node_modules/manager'] = {
     $: '',
     0: '',
     mapping: {
-      'variables': 'variables',
       'style': 'style'
     }
   }
@@ -4996,4 +5172,4 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/actions":3,"../src/node_modules/console_history":4,"../src/node_modules/graph_explorer":6,"../src/node_modules/menu":8,"../src/node_modules/program":9,"../src/node_modules/quick_actions":10,"../src/node_modules/quick_editor":11,"../src/node_modules/space":12,"../src/node_modules/steps_wizard":13,"../src/node_modules/tabbed_editor":14,"../src/node_modules/tabs":15,"../src/node_modules/tabsbar":16,"../src/node_modules/task_manager":17,"../src/node_modules/taskbar":18,"../src/node_modules/theme_widget":19}]},{},[20]);
+},{"../src/node_modules/STATE":1,"../src/node_modules/action_bar":2,"../src/node_modules/actions":3,"../src/node_modules/console_history":4,"../src/node_modules/graph_explorer":6,"../src/node_modules/manager":8,"../src/node_modules/menu":9,"../src/node_modules/quick_actions":11,"../src/node_modules/quick_editor":12,"../src/node_modules/space":13,"../src/node_modules/steps_wizard":14,"../src/node_modules/tabbed_editor":15,"../src/node_modules/tabs":16,"../src/node_modules/tabsbar":17,"../src/node_modules/task_manager":18,"../src/node_modules/taskbar":19,"../src/node_modules/theme_widget":20}]},{},[21]);
