@@ -7,9 +7,12 @@ const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 
 
+const quick_actions = require('quick_actions')
+const actions = require('actions')
+const steps_wizard = require('steps_wizard')
+
 module.exports = action_bar
 
-const quick_actions = require('quick_actions')
 async function action_bar(opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const { drive } = sdb
@@ -22,12 +25,20 @@ async function action_bar(opts, protocol) {
   const shadow = el.attachShadow({ mode: 'closed' })
   
   shadow.innerHTML = `
-  <div class="action-bar-container main">
-    <div class="command-history">
-      <button class="icon-btn"></button>
+  <div class="container">
+    <div class="actions">
+      <actions></actions>
     </div>
-    <div class="quick-actions">
-      <quick-actions></quick-actions>
+    <div class="steps-wizard">
+      <steps-wizard></steps-wizard>
+    </div>
+    <div class="action-bar-container main">
+      <div class="command-history">
+        <button class="icon-btn"></button>
+      </div>
+      <div class="quick-actions">
+        <quick-actions></quick-actions>
+      </div>
     </div>
   </div>
   <style>
@@ -36,23 +47,46 @@ async function action_bar(opts, protocol) {
   const main = shadow.querySelector('.main')
   const history_icon = shadow.querySelector('.icon-btn')
   const quick_placeholder = shadow.querySelector('quick-actions')
-
+  const actions_placeholder = shadow.querySelector('actions')
+  const steps_wizard_placeholder = shadow.querySelector('steps-wizard')
 
   let console_icon = {}
   const subs = await sdb.watch(onbatch)
 
-  let send = null
-  let _ = null
+  const _ = {
+    up: null,
+    send_quick_actions: null,
+    send_actions: null,
+    send_steps_wizard: null
+  }
+  let actions_data = null
+  let selected_action = null
+
   if(protocol){
-    send = protocol(msg => onmessage(msg))
-    _ = { up: send, send_quick_actions: null }
+    let send = protocol(msg => onmessage(msg))
+    _.up = send
   }
 
   history_icon.innerHTML = console_icon
   history_icon.onclick = onhistory
   const element = protocol ? await quick_actions(subs[0], quick_actions_protocol) : await quick_actions(subs[0])
-  element.classList.add('replaced-quick-actions')
   quick_placeholder.replaceWith(element)
+
+  const actions_el = await actions(subs[1], actions_protocol)
+  actions_el.classList.add('hide')
+  actions_placeholder.replaceWith(actions_el)
+
+  const steps_wizard_el = await steps_wizard(subs[2], steps_wizard_protocol)
+  steps_wizard_el.classList.add('hide')
+  steps_wizard_placeholder.replaceWith(steps_wizard_el)
+
+  const parent_handler = {
+    load_actions,
+    selected_action: parent__selected_action,
+    show_submit_btn,
+    form_data
+  }
+
   return el
 
   async function onbatch (batch) {
@@ -74,19 +108,139 @@ async function action_bar(opts, protocol) {
   function onhistory() {
     _.up({ type: 'console_history_toggle', data: null })
   }
-  // ---------
-  // PROTOCOLS  
-  // ---------
+
+
+  // --- Toggle Views ---
+  function toggle_view(el, show) {
+    el.classList.toggle('hide', !show)
+  }
+
+  function actions_toggle_view(display) {
+    toggle_view(actions_el, display === 'block')
+  }
+
+  function steps_toggle_view(display) {
+    toggle_view(steps_wizard_el, display === 'block')
+  }
+
+  // -------------------------------
+  // Protocol: actions
+  // -------------------------------
+  
+  function actions_protocol(send) {
+    _.send_actions = send
+
+    const actions_handlers = {
+      selected_action: actions__selected_action
+    }
+
+    return function on({ type, data }) {
+      const handler = actions_handlers[type] || fail
+      handler(data, type)
+    }
+  }
+
+  function actions__selected_action(data, type) {
+    selected_action = data?.action || null
+    _.send_quick_actions?.({
+      type,
+      data: {
+        ...data,
+        total_steps: actions_data[selected_action]?.length || 0
+      }
+    })
+
+    _.send_steps_wizard?.({ type: 'init_data', data: actions_data[selected_action] })
+    steps_toggle_view('block')
+
+    if (actions_data[selected_action]?.length > 0) {
+      const first_step = actions_data[selected_action][0]
+      _.up?.({ type: 'render_form', data: first_step })
+    }
+
+    if (actions_data[selected_action][actions_data[selected_action].length - 1]?.is_completed) {
+      _?.send_quick_actions({ type: 'show_submit_btn' })
+    }
+
+    _.up?.({ type, data: selected_action })
+    actions_toggle_view('none')
+  }
+
+
+  // -------------------------------
+  // Protocol: quick actions
+  // -------------------------------
+
+
   function quick_actions_protocol (send) {
     _.send_quick_actions = send
+
+    const quick_handlers = {
+      display_actions: quick_actions__display_actions,
+      action_submitted: quick_actions__action_submitted
+    }
+
     return on
     function on ({ type, data }) {
-      _.up({ type, data })
+      const handler = quick_handlers[type] || fail
+      handler(data, type)
+      
     }
   }
   
+  function quick_actions__display_actions(data) {
+    actions_toggle_view(data)
+    if (data === 'none') {
+      steps_toggle_view('none')
+      _.up?.({ type: 'clean_up', data: selected_action })
+    }
+  }
+
+  function quick_actions__action_submitted(data) {
+    const result = JSON.stringify(actions_data[selected_action].map(step => step.data), null, 2)
+    _.send_quick_actions?.({ type: 'deactivate_input_field' })
+    _.up?.({ type: 'action_submitted', data: { result, selected_action } })
+  }
+
+  // -------------------------------
+  // Protocol: steps wizard
+  // -------------------------------
+
+  function steps_wizard_protocol(send) {
+    _.send_steps_wizard = send
+
+    const steps_handlers = {
+      step_clicked: steps_wizard__step_clicked
+    }
+
+    return function on({ type, data }) {
+      const handler = steps_handlers[type] || default_steps_handler
+      handler(data, type)
+    }
+  }
+
+  function steps_wizard__step_clicked(data) {
+    _.send_quick_actions?.({ type: 'update_current_step', data })
+    _.up?.({ type: 'render_form', data })
+  }
+
   function onmessage ({ type, data }) {
-    _.send_quick_actions({ type, data })
+    console.log('action_bar.onmessage', type, data)
+    parent_handler[type]?.(data, type)
+  }
+
+  function load_actions(data, type) {
+    actions_data = data
+    _.send_actions?.({ type, data })
+  }
+  function parent__selected_action(data, type) {
+    _.send_quick_actions?.({ type, data })
+  }
+  function show_submit_btn(data, type) {
+    _.send_quick_actions?.({ type: 'show_submit_btn' })
+  }
+  function form_data(data, type) {
+    _.send_steps_wizard?.({ type: 'init_data', data: actions_data[selected_action] })
   }
 }
 
@@ -94,9 +248,9 @@ function fallback_module() {
   return {
     api: fallback_instance,
     _: {
-      'quick_actions': {
-        $: ''
-      },
+      'quick_actions': { $: '' },
+      'actions': { $: '' },
+      'steps_wizard': { $: '' }
     }
   }
   function fallback_instance() {
@@ -110,6 +264,22 @@ function fallback_module() {
             'actions': 'actions',
             'hardcons': 'hardcons'
           }
+        },
+        'actions': {
+          0: '',
+          mapping: {
+            'style': 'style',
+            'icons': 'icons',
+            'actions': 'actions',
+            'hardcons': 'hardcons'
+          }
+        },
+        'steps_wizard': {
+          0: '',
+          mapping: {
+            'style': 'style',
+            'variables': 'variables'
+          }
         }
       },
       drive: {
@@ -121,6 +291,10 @@ function fallback_module() {
         'style/': {
           'theme.css': {
             raw: `
+              .container {
+                display: flex;
+                flex-direction: column;
+              }
               .action-bar-container {
                 display: flex;
                 flex-direction: row;
@@ -142,10 +316,10 @@ function fallback_module() {
                 align-items: center;
                 min-width: 300px;
               }
-              .replaced-quick-actions {
-                display: flex;
-                flex: auto;
+              .hide {
+                display: none;
               }
+              
               .icon-btn {
                 display: flex;
                 min-width: 32px;
@@ -174,8 +348,9 @@ function fallback_module() {
     }
   }
 }
+
 }).call(this)}).call(this,"/src/node_modules/action_bar/action_bar.js")
-},{"STATE":1,"quick_actions":11}],3:[function(require,module,exports){
+},{"STATE":1,"actions":3,"quick_actions":11,"steps_wizard":14}],3:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -845,6 +1020,7 @@ async function form_input (opts, protocol) {
 	
 	const on = {
     style: inject,
+    data: ondata
   }
 
   let current_step = null
@@ -871,8 +1047,11 @@ async function form_input (opts, protocol) {
 	const input_field_el = shadow.querySelector('.input-field')
   const overlay_el = shadow.querySelector('.overlay-lock')
 
-	input_field_el.oninput = function () {
+	input_field_el.oninput = async function () {
     if (!input_accessible) return
+    await drive.put('data/form_input.json', {
+      input_field: this.value
+    })
 		if (this.value.length >= 10) {
 			_.up({
         type: 'action_submitted',
@@ -887,7 +1066,11 @@ async function form_input (opts, protocol) {
 
   const subs = await sdb.watch(onbatch)
 
-  
+  const parent_handler = {
+    step_data,  
+    reset_data
+  }
+
   return el
 
   async function onbatch(batch) {
@@ -906,20 +1089,39 @@ async function form_input (opts, protocol) {
     })())
   }
 
+  function ondata(data) {
+    if (data && data.length > 0) {
+      const input_data = data[0]
+      if (input_data && input_data.input_field) {
+        input_field_el.value = input_data.input_field
+      }
+    } else {
+      input_field_el.value = ''
+    }
+  }
+
 	function onmessage ({ type, data }) {
     console.log('message from form_input', type, data)
-    if (type === 'step_data') {
-      current_step = data
-      console.log('message from form_input', input_field_el, input_field_el.value)
-      input_field_el.value = data?.data || ''
-      input_accessible = data?.is_accessible !== false
-      
-      overlay_el.hidden = input_accessible
+    parent_handler[type]?.(data, type)
+  }
+  
+  function step_data(data, type) {
+    current_step = data 
 
-      input_field_el.placeholder = input_accessible
-        ? 'Type to submit'
-        : 'Input disabled for this step'
-    }
+    input_accessible = data?.is_accessible !== false
+    
+    overlay_el.hidden = input_accessible
+
+    input_field_el.placeholder = input_accessible
+      ? 'Type to submit'
+      : 'Input disabled for this step'
+  }
+
+  function reset_data(data, type) {
+    input_field_el.value = ''
+    drive.put('data/form_input.json', {
+      input_field: ''
+    })
   }
 
 }
@@ -969,6 +1171,13 @@ function fallback_module () {
               cursor: not-allowed;
             }
 						`
+          }
+        },
+        'data/': {
+          'form_input.json': {
+            raw:  {
+              input_field: ""
+            }
           }
         }
       }
@@ -1408,6 +1617,7 @@ async function input_test (opts, protocol) {
 	
 	const on = {
     style: inject,
+    data: ondata
   }
 
   let current_step = null
@@ -1433,8 +1643,13 @@ async function input_test (opts, protocol) {
 	const input_field_el = shadow.querySelector('.input-field')
   const overlay_el = shadow.querySelector('.overlay-lock')
 
-	input_field_el.oninput = function () {
+	input_field_el.oninput = async function () {
     if (!input_accessible) return
+
+    await drive.put('data/input_test.json', {
+      input_field: this.value
+    })
+
 		if (this.value.length >= 10) {
 			_.up({
         type: 'action_submitted',
@@ -1448,8 +1663,12 @@ async function input_test (opts, protocol) {
 	}
 
   const subs = await sdb.watch(onbatch)
-
   
+  const parent_handler = {
+    step_data,
+    reset_data
+  }
+
   return el
 
   async function onbatch(batch) {
@@ -1468,20 +1687,43 @@ async function input_test (opts, protocol) {
     })())
   }
 
+  function ondata(data) {
+    if (data && data.length > 0) {
+      const input_data = data[0]
+      if (input_data && input_data.input_field) {
+        input_field_el.value = input_data.input_field
+      }
+    } else {
+      input_field_el.value = ''
+    }
+  }
+
+  // ------------------
+  // Parent Observer
+  // ------------------
+
 	function onmessage ({ type, data }) {
     console.log('message from input_test', type, data)
-    if (type === 'step_data') {
-      current_step = data
-      input_field_el.value = data?.data || ''
-      
-      input_accessible = data?.is_accessible !== false
-      
-      overlay_el.hidden = input_accessible
+    parent_handler[type]?.(data, type)
+  }
 
-      input_field_el.placeholder = input_accessible
-        ? 'Type to submit'
-        : 'Input disabled for this step'
-    }
+  function step_data(data, type) {
+    current_step = data 
+
+    input_accessible = data?.is_accessible !== false
+    
+    overlay_el.hidden = input_accessible
+
+    input_field_el.placeholder = input_accessible
+      ? 'Type to submit'
+      : 'Input disabled for this step'
+  }
+
+  function reset_data(data, type) {
+    input_field_el.value = ''
+    drive.put('data/input_test.json', {
+      input_field: ''
+    })
   }
 
 }
@@ -1536,6 +1778,13 @@ function fallback_module () {
             }
 						`
           }
+        },
+        'data/': {
+          'input_test.json': {
+            raw:  {
+              input_field: ""
+            }
+          }
         }
       }
     }
@@ -1549,11 +1798,10 @@ const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 
-const quick_actions = require('quick_actions')
-const actions = require('actions')
 const form_input = require('form_input')
 const input_test = require('input_test')
 const program = require('program')
+const action_bar = require('action_bar')
 
 const component_modules = {
   form_input,
@@ -1575,8 +1823,7 @@ async function manager(opts) {
   let selected_action = null
 
   const _ = {
-    send_quick_actions: null,
-    send_actions: null,
+    send_actions_bar: null,
     send_form_input: {},
     send_steps_wizard: null,
     send_program: null
@@ -1587,30 +1834,23 @@ async function manager(opts) {
   shadow.innerHTML = `
     <div class="main">
       <form-input></form-input>
-      <actions></actions>
-      <quick-actions></quick-actions>
+      <action-bar></action-bar>
       <program></program>
     </div>
     <style></style>
   `
 
   const style = shadow.querySelector('style')
-  const actions_placeholder = shadow.querySelector('actions')
-  const quick_actions_placeholder = shadow.querySelector('quick-actions')
   const form_input_placeholder = shadow.querySelector('form-input')
   const program_placeholder = shadow.querySelector('program')
+  const action_bar_placeholder = shadow.querySelector('action-bar')
 
   const subs = await sdb.watch(onbatch)
 
-  
-  const actions_el = await actions(subs[0], actions_protocol)
-  actions_el.classList.add('hide')
-  actions_placeholder.replaceWith(actions_el)
+  const action_bar_el = await action_bar(subs[0], actions_bar_protocol)
+  action_bar_placeholder.replaceWith(action_bar_el)
 
-  const quick_actions_el = await quick_actions(subs[1], quick_actions_protocol)
-  quick_actions_placeholder.replaceWith(quick_actions_el)
-  
-  const program_el = await program(subs[2], program_protocol)
+  const program_el = await program(subs[1], program_protocol)
   program_el.classList.add('hide')
   program_placeholder.replaceWith(program_el)
 
@@ -1652,115 +1892,132 @@ async function manager(opts) {
     el.classList.toggle('hide', !show)
   }
 
-  function actions_toggle_view(display) {
-    toggle_view(actions_el, display === 'block')
+  function get_form_input_component_index(component) {
+    const { _: components } = fallback_module()
+    return Object.keys(components).indexOf(component)
   }
-
-  function form_input_protocol(component_name) {
-    return function (send) {
-      _.send_form_input[component_name] = send
-      return function on({ type, data }) {
-        if (type === 'action_submitted') {
-          const step = variables[selected_action][data?.index]
-          Object.assign(step, {
-            is_completed: true,
-            status: 'completed',
-            data: data?.value
-          })
-          _.send_quick_actions({ type: "init_data", data: variables[selected_action] })
-
-          if (variables[selected_action][variables[selected_action].length - 1]?.is_completed) {
-            _.send_quick_actions({ type: 'show_submit_btn' })
-          }
-        }
-      }
-    }
-  }
-
+  
   function render_form_component(component_name) {
     for (const name in form_input_elements) {
       toggle_view(form_input_elements[name], name === component_name)
     }
   }
 
-  function get_form_input_component_index(component) {
-    const { _: components } = fallback_module()
-    return Object.keys(components).indexOf(component)
+  
+  // -------------------------------
+  // Protocol: form input
+  // -------------------------------
+
+  function form_input_protocol(component_name) {
+    return function (send) {
+      _.send_form_input[component_name] = send
+      
+      const form_input_handlers = {
+        action_submitted: form__action_submitted
+      }
+
+      return function on({ type, data }) {  
+        const handler = form_input_handlers[type] || fail
+        handler(data, type)
+      }
+    }
   }
+
+  async function form__action_submitted(data, type) {
+    console.log('manager.on_form_submitted', data, variables, selected_action)
+    const step = variables[selected_action][data?.index]
+    Object.assign(step, {
+      is_completed: true,
+      status: 'completed',
+      data: data?.value
+    })
+    _.send_program?.({ type: 'update_data', data: variables })
+    _?.send_actions_bar({ type: "form_data", data: variables[selected_action] })
+
+    if (variables[selected_action][variables[selected_action].length - 1]?.is_completed) {
+      _.send_actions_bar({ type: 'show_submit_btn' })
+    }
+  }
+
+  
+  // -------------------------------
+  // Protocol: program
+  // -------------------------------
 
   function program_protocol(send) {
     _.send_program = send
-    return on
-    function on({ type, data }) {
-      if (type === 'load_actions') {
-        variables = data
-        _.send_actions?.({ type, data })
-      }
+
+    const program_handlers = {
+      load_actions: program__load_actions
+    }
+    return function on({ type, data }) {
+      const handler = program_handlers[type] || fail
+      handler(data, type)
     }
   }
 
-  function actions_protocol(send) {
-    _.send_actions = send
-    return on
-    function on({ type, data }) {
-      console.log('actions_protocol', type, data)
-      selected_action = data?.action || null
-      _.send_quick_actions({
-        type,
-        data: {
-          ...data,
-          steps_info: variables[selected_action] || [],
-          total_steps: variables[selected_action].length || 0
-        }
-      })
-   
-      if (variables[selected_action].length > 0) {
-        const firstStep = variables[selected_action][0]
-        render_form_component(firstStep.component)
-        const send = _.send_form_input[firstStep.component]
-        if (send) send({ type: 'step_data', data: firstStep })
-      }
-      actions_toggle_view('none')
+  function program__load_actions(data, type) {
+    variables = data  
+    _.send_actions_bar?.({ type, data })
+  }
+
+  // -------------------------------
+  // Protocol: action bar
+  // -------------------------------
+
+  function actions_bar_protocol(send) {
+    _.send_actions_bar = send
+
+    const action_bar_handlers = {
+      render_form: action_bar__render_form,
+      clean_up: action_bar__clean_up,
+      action_submitted: action_bar__action_submitted,
+      selected_action: action_bar__selected_action
+    }
+
+    return function on({ type, data }) {
+      const handler = action_bar_handlers[type] || fail
+      handler(data, type)
     }
   }
 
-  function quick_actions_protocol(send) {
-    _.send_quick_actions = send
-    return on
-    function on({ type, data }) {
-      on_quick_actions_message({ type, data })
-    }
+  function action_bar__render_form(data, type) {
+    render_form_component(data.component)
+    const send = _.send_form_input[data.component]
+    if (send) send({ type: 'step_data', data })
   }
 
-  function on_quick_actions_message({ type, data }) {
-    if (type == 'display_actions') {
-      actions_toggle_view(data)
-      if (data === 'none') {
-        for (const el of Object.values(form_input_elements)) {
-          toggle_view(el, false)
-        }
-        cleanup()
-      }
-    } else if (type == 'action_submitted') {
-      const result = JSON.stringify(variables[selected_action].map(step => step.data), null, 2)
-      _.send_program({ type: 'display_result', data: { result, selected_action }})
-      
-      _.send_quick_actions?.({ type: 'deactivate_input_field' })
-    } else if (type == 'render_form') {
-      render_form_component(data.component)
-      const send = _.send_form_input[data.component]
-      if (send) send({ type: 'step_data', data })
-    }
+  function action_bar__action_submitted(data, type) {
+    _.send_program({ type: 'display_result', data })
   }
 
-  function cleanup() {
-    console.log('Cleaning up variables for selected action:', selected_action, variables[selected_action])
+  function action_bar__selected_action(data, type) {
+    selected_action = data
+  }
+
+  function action_bar__clean_up(data, type) {
+    data && cleanup(data)
+  }
+
+  function cleanup(selected_action) {
     const cleaned = variables[selected_action].map(step => ({
       ...step,
       is_completed: false,
       data: ''
     }))
     variables[selected_action] = cleaned
+    _.send_program?.({ type: 'update_data', data: variables })
+
+    for (const step of variables[selected_action]) {
+      if (step.component && _.send_form_input[step.component]) {
+        _.send_form_input[step.component]({ type: 'reset_data'})
+      }
+    }
+
+    for (const el of Object.values(form_input_elements)) {
+      console.log('toggle_view', el, false)
+      toggle_view(el, false)
+    }
   }
 }
 
@@ -1769,8 +2026,7 @@ function fallback_module() {
   return {
     api: fallback_instance,
     _: {
-      'actions': { $: '' },
-      'quick_actions': { $: '' },
+      'action_bar': { $: '' },
       'program': { $: '' },
       'form_input': { $: '' },
       'input_test': { $: '' }
@@ -1780,22 +2036,11 @@ function fallback_module() {
   function fallback_instance() {
     return {
       _: {
-        'actions': {
+        'action_bar': {
           0: '',
           mapping: {
-            'style': 'style',
-            'actions': 'actions',
             'icons': 'icons',
-            'hardcons': 'hardcons'
-          }
-        },
-        'quick_actions': {
-          0: '',
-          mapping: {
-            'style': 'style',
-            'icons': 'icons',
-            'actions': 'actions',
-            'hardcons': 'hardcons'
+            'style': 'style'
           }
         },
         'program': {
@@ -1808,13 +2053,15 @@ function fallback_module() {
         'form_input': {
           0: '',
           mapping: {
-            'style': 'style'
+            'style': 'style',
+            'data': 'data',
           }
         },
         'input_test': {
           0: '',
           mapping: {
-            'style': 'style'
+            'style': 'style',
+            'data': 'data',
           }
         }
       },
@@ -1841,7 +2088,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/manager/manager.js")
-},{"STATE":1,"actions":3,"form_input":5,"input_test":7,"program":10,"quick_actions":11}],9:[function(require,module,exports){
+},{"STATE":1,"action_bar":2,"form_input":5,"input_test":7,"program":10}],9:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -2133,6 +2380,11 @@ async function program(opts, protocol) {
   
   const subs = await sdb.watch(onbatch)
 
+  const parent_handler = {
+    display_result,
+    update_data
+  }
+
   return el
 
   // --- Internal Functions ---
@@ -2163,10 +2415,14 @@ async function program(opts, protocol) {
   }
 
   function onmessage({ type, data }) {
-    if (type == 'display_result') {
-      console.log('Display Result:', data)
-      alert(`Result of action(${data?.selected_action}): ${data?.result}`)
-    }
+    parent_handler[type]?.(data, type)
+  }
+  function display_result(data) {
+    console.log('Display Result:', data)
+    alert(`Result of action(${data?.selected_action}): ${data?.result}`)
+  }
+  function update_data(data) {
+    drive.put('variables/program.json', data)
   }
 }
 
@@ -2206,8 +2462,6 @@ const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 module.exports = quick_actions
 
-const steps_wizard = require('steps_wizard')
-
 async function quick_actions(opts, protocol) {
   const { id, sdb } = await get(opts.sid)
   const {drive} = sdb
@@ -2220,30 +2474,30 @@ async function quick_actions(opts, protocol) {
   }
 
   const el = document.createElement('div')
+  el.style.display = 'flex'
+  el.style.flex = 'auto'
+
   const shadow = el.attachShadow({ mode: 'closed' })
   
   
   shadow.innerHTML = `
-  <div>
-    <steps-wizard></steps-wizard>
-    <div class="quick-actions-container main">
-      <div class="default-actions"></div>
-      <div class="text-bar" role="button"></div>
-      <div class="input-wrapper" style="display: none;">
-        <div class="input-display">
-          <span class="slash-prefix">/</span>
-          <span class="command-text"></span>
-          <span class="step-display" style="display: none;">
-            <span>steps:<span>
-            <span class="current-step">1</span>
-            <span class="step-separator">-</span>
-            <span class="total-step">1</span>
-          </span>
-          <input class="input-field" type="text" placeholder="Type to search actions...">
-        </div>
-        <button class="submit-btn" style="display: none;"></button>
-        <button class="close-btn"></button>
+  <div class="quick-actions-container main">
+    <div class="default-actions"></div>
+    <div class="text-bar" role="button"></div>
+    <div class="input-wrapper" style="display: none;">
+      <div class="input-display">
+        <span class="slash-prefix">/</span>
+        <span class="command-text"></span>
+        <span class="step-display" style="display: none;">
+          <span>steps:<span>
+          <span class="current-step">1</span>
+          <span class="step-separator">-</span>
+          <span class="total-step">1</span>
+        </span>
+        <input class="input-field" type="text" placeholder="Type to search actions...">
       </div>
+      <button class="submit-btn" style="display: none;"></button>
+      <button class="close-btn"></button>
     </div>
   </div>
   <style>
@@ -2261,19 +2515,15 @@ async function quick_actions(opts, protocol) {
   const total_steps = shadow.querySelector('.total-step')
   const style = shadow.querySelector('style')
   const main = shadow.querySelector('.main')
-
-  const steps_wizard_placeholder = shadow.querySelector('steps-wizard')
   
   let init = false
   let icons = {}
   let hardcons = {}
   let defaults = []
-  let selected_action = null
   
   let send = null
   const _ = {
-    up: null,
-    send_steps_wizard: null
+    up: null
   }
   if(protocol){
     send = protocol(msg => onmessage(msg))
@@ -2286,25 +2536,38 @@ async function quick_actions(opts, protocol) {
 
   const subs = await sdb.watch(onbatch)
 
-  const steps_wizard_el = await steps_wizard(subs[0], steps_wizard_protocol)
-  steps_wizard_el.classList.add('hide')
-  steps_wizard_placeholder.replaceWith(steps_wizard_el)
-
   submit_btn.innerHTML = hardcons.submit
   close_btn.innerHTML = hardcons.cross
+
   return el
 
-  function onmessage ({ type, data }) {
-    if (type === 'selected_action') {
-      select_action(data)
-    } else if (type === 'deactivate_input_field') {
-      deactivate_input_field()
-    } else if (type == 'show_submit_btn') {
-      show_submit_btn()
-    } else if (type === 'init_data') {
-      _?.send_steps_wizard({ type, data })
+  function onsubmit() {
+    _.up({ type: 'action_submitted'})
+  }
+  function oninput(e) {
+    _.up({ type: 'filter_actions', data: e.target.value })
+  }
+
+  function update_input_display(selected_action = null) {
+    if (selected_action) {
+      slash_prefix.style.display = 'inline'
+      command_text.style.display = 'inline'
+      command_text.textContent = `#${selected_action.action}`
+      current_step.textContent = selected_action?.current_step || 1
+      total_steps.textContent = selected_action.total_steps || 1
+      step_display.style.display = 'inline-flex'
+      
+      input_field.style.display = 'none'
+    } else {
+      slash_prefix.style.display = 'none'
+      command_text.style.display = 'none'
+      input_field.style.display = 'block'
+      submit_btn.style.display = 'none'
+      step_display.style.display = 'none'
+      input_field.placeholder = 'Type to search actions...'
     }
   }
+
   function activate_input_field() {
     is_input_active = true
     
@@ -2317,16 +2580,18 @@ async function quick_actions(opts, protocol) {
     _.up({ type: 'display_actions', data: 'block' })
   }
 
-  function onsubmit() {
-    if (selected_action) {
-      console.log('Selected action submitted:', selected_action)
-      _.up({ type: 'action_submitted', data: selected_action })
+  function onmessage({ type, data }) {
+    const message_map = {
+      selected_action,
+      deactivate_input_field,
+      show_submit_btn,
+      update_current_step
     }
+    const handler = message_map[type] || fail
+    handler(data)
   }
-  function oninput(e) {
-    _.up({ type: 'filter_actions', data: e.target.value })
-  }
-  function deactivate_input_field() {
+
+  function deactivate_input_field(data) {
     is_input_active = false
     
     default_actions.style.display = 'flex'
@@ -2335,42 +2600,22 @@ async function quick_actions(opts, protocol) {
     input_wrapper.style.display = 'none'
     
     input_field.value = ''
-    selected_action = null
     update_input_display()
     
-    steps_toggle_view('none')
     _.up({ type: 'display_actions', data: 'none' })
   }
-
-  function select_action(action) {
-    selected_action = action
-    update_input_display(selected_action)
-    _.send_steps_wizard({ type: 'init_data', data: selected_action.steps_info })
-    steps_toggle_view('block')
-  }
-
+  
   function show_submit_btn() {
     submit_btn.style.display = 'flex'
   }
 
-  function update_input_display(selected_action = null) {
-    if (selected_action) {
-      slash_prefix.style.display = 'inline'
-      command_text.style.display = 'inline'
-      command_text.textContent = `#${selected_action.action}`
-      current_step.textContent = selected_action?.current_step || 1
-      total_steps.textContent = selected_action.total_steps
-      step_display.style.display = 'inline-flex'
-      
-      input_field.style.display = 'none'
-    } else {
-      slash_prefix.style.display = 'none'
-      command_text.style.display = 'none'
-      input_field.style.display = 'block'
-      submit_btn.style.display = 'none'
-      step_display.style.display = 'none'
-      input_field.placeholder = 'Type to search actions...'
-    }
+  function update_current_step(data) {
+    let current_step_value = data?.index + 1 || 1
+    current_step.textContent = current_step_value
+  }
+
+  function selected_action(data) {
+    update_input_display(data)
   }
 
   async function onbatch(batch) {
@@ -2417,52 +2662,15 @@ async function quick_actions(opts, protocol) {
     
     close_btn.innerHTML = icons['close']
   }
-
-  function toggle_view(el, show) {
-    el.classList.toggle('hide', !show)
-  }
-
-  function steps_toggle_view(display) {
-    toggle_view(steps_wizard_el, display === 'block')
-  }
-
-  
-  function steps_wizard_protocol(send) {
-    _.send_steps_wizard = send
-    return on
-    function on({ type, data }) {
-      if (type === 'step_clicked') {
-        let current_step_value = data?.index + 1 || 1
-
-        current_step.textContent = current_step_value
-        selected_action.current_step = current_step_value
-        console.log('quick-actions-steps-clicked--- ', current_step_value)
-        _.up({type: 'render_form', data})
-      }
-    }
-  }
-
 }
 
 function fallback_module() {
   return {
     api: fallback_instance,
-    _: {
-      'steps_wizard': { $: '' },
-    }
   }
 
   function fallback_instance() {
     return {
-      _: {
-        'steps_wizard': {
-          0: '',
-          mapping: {
-            'style': 'style',
-            'variables': 'variables'
-          }
-        }
-      },
       drive: {
         'icons/': {
           '0.svg': {
@@ -2680,8 +2888,9 @@ function fallback_module() {
     }
   }
 }
+
 }).call(this)}).call(this,"/src/node_modules/quick_actions/quick_actions.js")
-},{"STATE":1,"steps_wizard":14}],12:[function(require,module,exports){
+},{"STATE":1}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
