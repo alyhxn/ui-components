@@ -18,17 +18,25 @@
     "start": "budo web/boot.js:bundle.js --open --live",
     "build": "browserify web/boot.js -o bundle.js",
     "start:act": "budo web/boot.js:bundle.js  --dir ./ --live --open",
-    "build:act": "browserify web/boot.js > bundle.js"
+    "build:act": "browserify web/boot.js > bundle.js",
+    "lint": "standardx"
   },
   "devDependencies": {
     "browserify": "^17.0.1",
-    "budo": "^11.8.4"
+    "budo": "^11.8.4",
+    "standardx": "^7.0.0"
   },
-  "standard": {
-
+  "standardx": {
     "ignore": [
       "bundle.js",
-      "web/index.js"
-    ]
+      "web/page.js",
+      "web/boot.js",
+      "temp.js",
+      "guide"
+    ],
+    "rules": {
+      "camelcase": "off",
+      "indent": ["error", 2]
+    }
   }
 }
