@@ -84,6 +84,7 @@ async function action_bar(opts, protocol) {
     load_actions,
     selected_action: parent__selected_action,
     show_submit_btn,
+    hide_submit_btn,
     form_data
   }
 
@@ -238,6 +239,9 @@ async function action_bar(opts, protocol) {
   }
   function show_submit_btn(data, type) {
     _.send_quick_actions?.({ type: 'show_submit_btn' })
+  }
+  function hide_submit_btn(data, type) {
+    _.send_quick_actions?.({ type: 'hide_submit_btn' })
   }
   function form_data(data, type) {
     _.send_steps_wizard?.({ type: 'init_data', data: actions_data[selected_action] })
@@ -1061,7 +1065,15 @@ async function form_input (opts, protocol) {
         }
       })
 			console.log('mark_as_complete')
-		}
+		} else {
+      _.up({
+        type: 'action_incomplete',
+        data: {
+          value: this.value,
+          index: current_step?.index || 0
+        }
+      })
+    }
 	}
 
   const subs = await sdb.watch(onbatch)
@@ -1659,7 +1671,15 @@ async function input_test (opts, protocol) {
         }
       })
 			console.log('mark_as_complete')
-		}
+		} else {
+      _.up({
+        type: 'action_incomplete',
+        data: {
+          value: this.value,
+          index: current_step?.index || 0
+        }
+      })
+    }
 	}
 
   const subs = await sdb.watch(onbatch)
@@ -1918,7 +1938,8 @@ async function manager(opts) {
       _.send_form_input[component_name] = send
       
       const form_input_handlers = {
-        action_submitted: form__action_submitted
+        action_submitted: form__action_submitted,
+        action_incomplete: form__action_incomplete,
       }
 
       return function on({ type, data }) {  
@@ -1928,7 +1949,7 @@ async function manager(opts) {
     }
   }
 
-  async function form__action_submitted(data, type) {
+  function form__action_submitted(data, type) {
     console.log('manager.on_form_submitted', data, variables, selected_action)
     const step = variables[selected_action][data?.index]
     Object.assign(step, {
@@ -1944,6 +1965,22 @@ async function manager(opts) {
     }
   }
 
+  function form__action_incomplete(data, type) {
+    console.log('manager.on_form_incomplete', data, variables, selected_action)
+    const step = variables[selected_action][data?.index]
+
+    if (!step.is_completed) return
+
+    Object.assign(step, {
+      is_completed: false,
+      status: 'error',
+      data: data?.value
+    })
+    _.send_program?.({ type: 'update_data', data: variables })
+    _?.send_actions_bar({ type: "form_data", data: variables[selected_action] })
+    _.send_actions_bar({ type: 'hide_submit_btn' })
+    
+  }
   
   // -------------------------------
   // Protocol: program
@@ -2053,14 +2090,14 @@ function fallback_module() {
             'variables': 'variables',
           }
         },
-        'form_input': {
+        'program>form_input': {
           0: '',
           mapping: {
             'style': 'style',
             'data': 'data',
           }
         },
-        'input_test': {
+        'program>input_test': {
           0: '',
           mapping: {
             'style': 'style',
@@ -2600,7 +2637,8 @@ async function quick_actions(opts, protocol) {
       selected_action,
       deactivate_input_field,
       show_submit_btn,
-      update_current_step
+      update_current_step,
+      hide_submit_btn,
     }
     const handler = message_map[type] || fail
     handler(data)
@@ -2622,6 +2660,10 @@ async function quick_actions(opts, protocol) {
   
   function show_submit_btn() {
     submit_btn.style.display = 'flex'
+  }
+
+  function hide_submit_btn() {
+    submit_btn.style.display = 'none'
   }
 
   function update_current_step(data) {
