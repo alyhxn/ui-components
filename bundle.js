@@ -1798,10 +1798,10 @@ const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 
-const form_input = require('form_input')
-const input_test = require('input_test')
 const program = require('program')
 const action_bar = require('action_bar')
+
+const { form_input, input_test } = program
 
 const component_modules = {
   form_input,
@@ -1857,9 +1857,14 @@ async function manager(opts) {
 
   const form_input_elements = {}
 
-  for (const [component_name, component_fn] of Object.entries(component_modules)) {
-    const index = get_form_input_component_index(component_name)
-    const el = await component_fn(subs[index], form_input_protocol(component_name))
+  console.log('subs', subs)
+
+  for (const [index, [component_name, component_fn]] of Object.entries(component_modules).entries()) {
+    const final_index = index + 2
+  
+    console.log('final_index', final_index, component_name, subs[final_index])
+    
+    const el = await component_fn(subs[final_index], form_input_protocol(component_name))
     el.classList.add('hide')
     form_input_elements[component_name] = el
     form_input_placeholder.parentNode.insertBefore(el, form_input_placeholder)
@@ -2028,8 +2033,6 @@ function fallback_module() {
     _: {
       'action_bar': { $: '' },
       'program': { $: '' },
-      'form_input': { $: '' },
-      'input_test': { $: '' }
     }
   }
 
@@ -2088,7 +2091,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/manager/manager.js")
-},{"STATE":1,"action_bar":2,"form_input":5,"input_test":7,"program":10}],9:[function(require,module,exports){
+},{"STATE":1,"action_bar":2,"program":10}],9:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -2349,6 +2352,12 @@ const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { sdb, get } = statedb(fallback_module)
 
+const form_input = require('form_input')
+const input_test = require('input_test')
+
+
+program.form_input = form_input
+program.input_test = input_test
 
 module.exports = program
 
@@ -2379,6 +2388,7 @@ async function program(opts, protocol) {
   const style = shadow.querySelector('style')
   
   const subs = await sdb.watch(onbatch)
+  console.log('program', subs)
 
   const parent_handler = {
     display_result,
@@ -2430,6 +2440,11 @@ async function program(opts, protocol) {
 function fallback_module() {
   return {
     api: fallback_instance,
+    _: {
+      
+      'form_input': { $: '' },
+      'input_test': { $: '' }
+    }
   }
 
   function fallback_instance() {
@@ -2455,7 +2470,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program/program.js")
-},{"STATE":1}],11:[function(require,module,exports){
+},{"STATE":1,"form_input":5,"input_test":7}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
