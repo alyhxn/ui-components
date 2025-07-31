@@ -17,7 +17,7 @@ const actions = require('../src/node_modules/actions')
 const tabbed_editor = require('../src/node_modules/tabbed_editor')
 const task_manager = require('../src/node_modules/task_manager')
 const quick_actions = require('../src/node_modules/quick_actions')
-const graph_explorer = require('../src/node_modules/graph_explorer')
+const graph_explorer = require('graph-explorer')
 const editor = require('../src/node_modules/quick_editor')
 const manager = require('../src/node_modules/manager')
 const steps_wizard = require('../src/node_modules/steps_wizard')
@@ -298,7 +298,7 @@ function fallback_module () {
     '../src/node_modules/quick_actions',
     '../src/node_modules/graph_explorer',
     '../src/node_modules/manager',
-    '../src/node_modules/steps_wizard',
+    '../src/node_modules/steps_wizard'
   ]
   const subs = {}
   names.forEach(subgen)
@@ -390,7 +390,7 @@ function fallback_module () {
       'hardcons': 'hardcons'
     }
   }
-  subs['../src/node_modules/graph_explorer'] = {
+  subs['graph-explorer'] = {
     $: '',
     0: '',
     mapping: {
