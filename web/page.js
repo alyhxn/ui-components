@@ -296,7 +296,7 @@ function fallback_module () {
     '../src/node_modules/tabbed_editor',
     '../src/node_modules/task_manager',
     '../src/node_modules/quick_actions',
-    '../src/node_modules/graph_explorer',
+    'graph-explorer',
     '../src/node_modules/manager',
     '../src/node_modules/steps_wizard'
   ]
@@ -395,7 +395,9 @@ function fallback_module () {
     0: '',
     mapping: {
       'style': 'style',
-      'entries': 'entries'
+      'entries': 'entries',
+      'runtime': 'runtime',
+      'mode': 'mode'
     }
   }
   subs[menuname] = { 
