@@ -274,3 +274,147 @@ function fallback_module () {
 }
 ```
 ---
+## Communication of a module with other modules
+
+As discussed above we use **_** property of fallbacks to use **submodules**, Now to add communication between which can be used to trigger functions on events we use a **protocol** based system.
+### Concept
+Lets say **child.js** is a submodule of **parent.js**, then what we need to do is to first of all define a protocol function and pass it as a parameter to the instance of that submodules inorder to introduce a message based communication between those.
+```js
+  const child = require('child')
+```
+and then
+```js
+  let _ = {child : null} // this is used to hold functions for all the children. These would be passed or sent back by the all of the children. We can also include an `up` property for the communication functions for the parent if the current module is a child for another module and it getting protocol as a paramerter.
+  element = await child(subs[0], space_protocol)
+```
+An example of a protocol function in the `parent.js` for `child.js` is:
+```js
+  function space_protocol (send) {
+    _.send_space = send
+    return on // this is the function which is passed to child and the child can execute this to send a message to the parent
+    function on ({ type, data }) { // runs on behalf of the child
+      decide_and_execute_function_for_child_based_on_the_passed_type({ type, data })
+    }
+  }
+```
+When the **_** property is like this:
+```js
+  function fallback_instance () {
+    return {
+      _: {
+        'child': {
+          0: '',
+          mapping: {
+            'style': 'style'
+          }
+        }
+      }
+    }
+  }
+```
+Then for the `child.js` the code could look like:
+```js
+async function taskbar(opts, protocol) {
+...
+  let send = null
+  let _ = null
+  if(protocol) {
+    send = protocol(msg => onmessage(msg))
+    _ = { up: send, action_bar: null, tabsbar: null }
+  }
+...
+return
+...
+  function action_bar_protocol (send) {
+    _.action_bar = send
+    return on
+    function on ({ type, data }) {  //routing the messages to parent
+      _.up({ type, data })
+    }
+  }
+  
+  function tabsbar_protocol (send) {
+    _.tabsbar = send
+    return on
+    function on ({ type, data }) { //routing the messages to parent
+      _.up({ type, data })
+    }
+  }
+  function onmessage ({ type, data }) { // This function is passed as parameter to the parent function, so it can communicate with the child
+    switch (type) {
+      case 'tab_name_clicked':
+      case 'tab_close_clicked':
+        _.up({ type, data })
+        break
+      default:
+        if (_.action_bar) {
+          _.action_bar({ type, data })
+        }
+    }
+  }
+...
+}
+```
+
+This sets up a 2 way communication between modules to send messages and based on which we can execute any function or piece of code after defining the logic for a message.
+
+---
+## sdb
+
+This is an object which we get from either instance or module level as discussed above. This object has two important properties which are `drive` and `watch`.
+
+Drive can be accessed throug to simplyfy code.
+```js
+{ drive } = sdb
+```
+### drive methods
+
+The `sdb.drive` object provides an interface for managing datasets and files attached to the current node. It allows you to list, retrieve, add, and check files within datasets defined in the module's state.
+
+- **sdb.drive.list(path?)**
+  - Lists all dataset names (as folders) attached to the current node.
+  - If a `path` (dataset name) is provided, returns the list of file names within that dataset.
+  - Example:
+    ```js
+    const datasets = sdb.drive.list(); // ['mydata/', 'images/']
+    const files = sdb.drive.list('mydata/'); // ['file1.json', 'file2.txt']
+    ```
+
+- **sdb.drive.get(path)**
+  - Retrieves a file object from a dataset.
+  - `path` should be in the format `'dataset_name/filename.ext'`.
+  - Returns an object: `{ id, name, type, raw }` or `null` if not found.
+  - Example:
+    ```js
+    const file = sdb.drive.get('mydata/file1.json');
+    // file: { id: '...', name: 'file1.json', type: 'json', raw: ... }
+    ```
+
+- **sdb.drive.put(path, buffer)**
+  - Adds a new file to a dataset.
+  - `path` is `'dataset_name/filename.ext'`.
+  - `buffer` is the file content (object, string, etc.).
+  - Returns the created file object: `{ id, name, type, raw }`.
+  - Example:
+    ```js
+    sdb.drive.put('mydata/newfile.txt', 'Hello World');
+    ```
+
+- **sdb.drive.has(path)**
+  - Checks if a file exists in a dataset.
+  - `path` is `'dataset_name/filename.ext'`.
+  - Returns `true` if the file exists, otherwise `false`.
+  - Example:
+    ```js
+    if (sdb.drive.has('mydata/file1.json')) { /* ... */ }
+    ```
+
+**Notes:**
+- Dataset names are defined in the fallback structure and must be unique within a node.
+- File types are inferred from the file extension.
+- All file operations are isolated to the current node's state and changes are persisted immediately.\
+- The onbatch() function is triggered as soon as something in the drive is updated through `drive.put()` so thats we may need to add flags for events which we dont want to trigger the update of whole ui.
+
+
+## Admin
+// @todo as I (ddroid) myself don't know the usage.
