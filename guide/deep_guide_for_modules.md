@@ -8,7 +8,7 @@ Here we would discuss the rules and a deep explanation of the steps for creating
 - We use CommonJS. Which consist of `require` keyword for importing external modules.
 - Furthermore, we use shadow DOM.
 - We handle all the element creation through JavaScript and try to maximize the use of template literals while creating HTML elements.
-- We try to keep the code modular by dividing the functionality into multiple functioned which are defined/placed always under the return statement of parent function and are used above, obviously.
+- We try to keep the code modular by dividing the functionality into multiple functioned which are defined/placed always under the return statement of super_node function and are used above, obviously.
 - Likewise, we don't use `btn.addEventListner()` syntax. Instead, we use `btn.onclick = onclick_function` etc.
 - We don't use JavaScript `classes` or `this` keyword.
 - We use a module called `STATE` for state management and persistent browser storage. I Will discuss it in detail in a bit.
@@ -278,22 +278,22 @@ function fallback_module () {
 
 As discussed above we use **_** property of fallbacks to use **submodules**, Now to add communication between which can be used to trigger functions on events we use a **protocol** based system.
 ### Concept
-Lets say **child.js** is a submodule of **parent.js**, then what we need to do is to first of all define a protocol function and pass it as a parameter to the instance of that submodules inorder to introduce a message based communication between those.
+Lets say **example_sub_module.js** is a submodule of **super_node.js**, then what we need to do is to first of all define a protocol function and pass it as a parameter to the instance of that submodules inorder to introduce a message based communication between those.
 ```js
-  const child = require('child')
+  const example_sub_module = require('example_sub_module')
 ```
 and then
 ```js
-  let _ = {child : null} // this is used to hold functions for all the children. These would be passed or sent back by the all of the children. We can also include an `up` property for the communication functions for the parent if the current module is a child for another module and it getting protocol as a paramerter.
-  element = await child(subs[0], space_protocol)
+  let _ = {example_sub_module : null} // this is used to hold functions for all the sub-modules. These would be passed or sent back by the all of the sub_modules. We can also include an `up` property for the communication functions for the super_node if the current module is a example_sub_module for another module and it getting protocol as a paramerter.
+  element = await example_sub_module(subs[0], space_protocol)
 ```
-An example of a protocol function in the `parent.js` for `child.js` is:
+An example of a protocol function in the `super_node.js` for `example_sub_module.js` is:
 ```js
   function space_protocol (send) {
     _.send_space = send
-    return on // this is the function which is passed to child and the child can execute this to send a message to the parent
-    function on ({ type, data }) { // runs on behalf of the child
-      decide_and_execute_function_for_child_based_on_the_passed_type({ type, data })
+    return on // this is the function which is passed to sub_module and the sub_module can execute this to send a message to the super_node
+    function on ({ type, data }) { // runs on behalf of the sub_module
+      decide_and_execute_function_for_subs_based_on_the_passed_type({ type, data })
     }
   }
 ```
@@ -302,7 +302,7 @@ When the **_** property is like this:
   function fallback_instance () {
     return {
       _: {
-        'child': {
+        'example_sub_module': {
           0: '',
           mapping: {
             'style': 'style'
@@ -312,7 +312,7 @@ When the **_** property is like this:
     }
   }
 ```
-Then for the `child.js` the code could look like:
+Then for the `example_sub_module.js` the code could look like:
 ```js
 async function taskbar(opts, protocol) {
 ...
@@ -328,7 +328,7 @@ return
   function action_bar_protocol (send) {
     _.action_bar = send
     return on
-    function on ({ type, data }) {  //routing the messages to parent
+    function on ({ type, data }) {  //routing the messages to super_node
       _.up({ type, data })
     }
   }
@@ -336,11 +336,11 @@ return
   function tabsbar_protocol (send) {
     _.tabsbar = send
     return on
-    function on ({ type, data }) { //routing the messages to parent
+    function on ({ type, data }) { //routing the messages to super_node
       _.up({ type, data })
     }
   }
-  function onmessage ({ type, data }) { // This function is passed as parameter to the parent function, so it can communicate with the child
+  function onmessage ({ type, data }) { // This function is passed as parameter to the example_super_node function, so it can communicate with the example_sub_module
     switch (type) {
       case 'tab_name_clicked':
       case 'tab_close_clicked':
