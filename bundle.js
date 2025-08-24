@@ -4357,6 +4357,7 @@ async function steps_wizard (opts, protocol) {
   }
 
   let variables = []
+  let currentActiveStep = 0
 
   let _ = null
   if(protocol){
@@ -4370,8 +4371,6 @@ async function steps_wizard (opts, protocol) {
   <div class="steps-wizard main">
     <div class="steps-container">
       <div class="steps-slot"></div>
-      <button class="nav-arrow left" id="leftArrow">‹</button>
-      <button class="nav-arrow right" id="rightArrow">›</button>
     </div>
   </div>
   <style>
@@ -4379,14 +4378,8 @@ async function steps_wizard (opts, protocol) {
   `
 
   const style = shadow.querySelector('style')
-  const steps_container = shadow.querySelector('.steps-container')
   const steps_entries = shadow.querySelector('.steps-slot')
-  const leftArrow = shadow.querySelector('#leftArrow')
-  const rightArrow = shadow.querySelector('#rightArrow')
-  
   const subs = await sdb.watch(onbatch)
-
-  setupArrowNavigation()
 
   // for demo purpose
   render_steps([
@@ -4405,53 +4398,6 @@ async function steps_wizard (opts, protocol) {
   ])
 
   return el
-
-  function setupArrowNavigation() {
-    function updateArrows() {
-      const scrollLeft = steps_entries.scrollLeft
-      const maxScroll = steps_entries.scrollWidth - steps_entries.clientWidth
-      
-      if (scrollLeft > 0) {
-        leftArrow.classList.add('visible')
-        steps_container.classList.add('has-left-overflow')
-      } else {
-        leftArrow.classList.remove('visible')
-        steps_container.classList.remove('has-left-overflow')
-      }
-      
-      if (scrollLeft < maxScroll - 1) {
-        rightArrow.classList.add('visible')
-        steps_container.classList.add('has-right-overflow')
-      } else {
-        rightArrow.classList.remove('visible')
-        steps_container.classList.remove('has-right-overflow')
-      }
-    }
-
-    leftArrow.addEventListener('click', () => {
-      const stepWidth = steps_entries.children[0]?.offsetWidth || 200
-      steps_entries.scrollBy({
-        left: -(stepWidth + 8),
-        behavior: 'smooth'
-      })
-    })
-
-    rightArrow.addEventListener('click', () => {
-      const stepWidth = steps_entries.children[0]?.offsetWidth || 200
-      steps_entries.scrollBy({
-        left: stepWidth + 8,
-        behavior: 'smooth'
-      })
-    })
-
-    steps_entries.addEventListener('scroll', updateArrows)
-    
-    window.addEventListener('resize', () => {
-      setTimeout(updateArrows, 100)
-    })
-
-    setTimeout(updateArrows, 100)
-  }
   
   function onmessage ({ type, data }) {
     console.log('steps_ data', type, data)
@@ -4484,30 +4430,26 @@ async function steps_wizard (opts, protocol) {
 
       btn.classList.add(`step-${status}`)
 
+      if (index === currentActiveStep - 1 && index > 0) {
+        btn.classList.add('back')
+      }
+      if (index === currentActiveStep + 1 && index < steps.length - 1) {
+        btn.classList.add('next')
+      }
+      if (index === currentActiveStep) {
+        btn.classList.add('active')
+      }
+
       btn.onclick = async () => {
         console.log('Clicked:', step)
+        currentActiveStep = index
         center_step(btn)
+        render_steps(steps)
         _?.up({type: 'step_clicked', data: {...step, index, total_steps: steps.length, is_accessible: accessible}})
-        
       };
 
       steps_entries.appendChild(btn)
     });
-    
-    setTimeout(() => {
-      const scrollLeft = steps_entries.scrollLeft
-      const maxScroll = steps_entries.scrollWidth - steps_entries.clientWidth
-      
-      if (scrollLeft > 0) {
-        leftArrow.classList.add('visible')
-        steps_container.classList.add('has-left-overflow')
-      }
-      
-      if (scrollLeft < maxScroll - 1) {
-        rightArrow.classList.add('visible')
-        steps_container.classList.add('has-right-overflow')
-      }
-    }, 100)
   }
 
   
