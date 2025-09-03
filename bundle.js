@@ -34,15 +34,14 @@ async function graph_explorer (opts) {
   let drive_updated_by_search = false // Flag to prevent `onbatch` from re-rendering on search updates.
   let is_rendering = false // Flag to prevent concurrent rendering operations in virtual scrolling.
   let spacer_element = null // DOM element used to manage scroll position when hubs are toggled.
-  let spacer_initial_height = 0
   let hub_num = 0 // Counter for expanded hubs.
 
   const el = document.createElement('div')
   el.className = 'graph-explorer-wrapper'
   const shadow = el.attachShadow({ mode: 'closed' })
   shadow.innerHTML = `
-    <div class="menubar"></div>
     <div class="graph-container"></div>
+    <div class="menubar"></div>
   `
   const menubar = shadow.querySelector('.menubar')
   const container = shadow.querySelector('.graph-container')
@@ -85,32 +84,20 @@ async function graph_explorer (opts) {
 ******************************************************************************/
   async function onbatch (batch) {
     // Prevent feedback loops from scroll or toggle actions.
-    if (drive_updated_by_scroll) {
-      drive_updated_by_scroll = false
-      return
-    }
-    if (drive_updated_by_toggle) {
-      drive_updated_by_toggle = false
-      return
-    }
-    if (drive_updated_by_search) {
-      drive_updated_by_search = false
-      return
-    }
+    if (check_and_reset_feedback_flags()) return
 
     for (const { type, paths } of batch) {
-      if (!paths || paths.length === 0) continue
+      if (!paths || !paths.length) continue
       const data = await Promise.all(
-        paths.map(async path => {
-          try {
-            const file = await drive.get(path)
-            if (!file) return null
-            return file.raw
-          } catch (e) {
-            console.error(`Error getting file from drive: ${path}`, e)
-            return null
-          }
-        })
+        paths.map(path =>
+          drive
+            .get(path)
+            .then(file => (file ? file.raw : null))
+            .catch(e => {
+              console.error(`Error getting file from drive: ${path}`, e)
+              return null
+            })
+        )
       )
       // Call the appropriate handler based on `type`.
       const func = on[type]
@@ -123,25 +110,18 @@ async function graph_explorer (opts) {
   }
 
   function on_entries ({ data }) {
-    if (!data || data[0] === null || data[0] === undefined) {
+    if (!data || data[0] == null) {
       console.error('Entries data is missing or empty.')
       all_entries = {}
       return
     }
-    try {
-      const parsed_data =
-        typeof data[0] === 'string' ? JSON.parse(data[0]) : data[0]
-      if (typeof parsed_data !== 'object' || parsed_data === null) {
-        console.error('Parsed entries data is not a valid object.')
-        all_entries = {}
-        return
-      }
-      all_entries = parsed_data
-    } catch (e) {
-      console.error('Failed to parse entries data:', e)
+    const parsed_data = parse_json_data(data[0], 'entries.json')
+    if (typeof parsed_data !== 'object' || !parsed_data) {
+      console.error('Parsed entries data is not a valid object.')
       all_entries = {}
       return
     }
+    all_entries = parsed_data
 
     // After receiving entries, ensure the root node state is initialized and trigger the first render.
     const root_path = '/'
@@ -165,17 +145,11 @@ async function graph_explorer (opts) {
     let needs_render = false
     const render_nodes_needed = new Set()
 
-    for (let i = 0; i < paths.length; i++) {
-      const path = paths[i]
-      if (data[i] === null) continue
+    paths.forEach((path, i) => {
+      if (data[i] === null) return
+      const value = parse_json_data(data[i], path)
+      if (value === null) return
 
-      let value
-      try {
-        value = typeof data[i] === 'string' ? JSON.parse(data[i]) : data[i]
-      } catch (e) {
-        console.error(`Failed to parse JSON for ${path}:`, e)
-        continue
-      }
       // Handle different runtime state updates based on the path i.e files
       switch (true) {
         case path.endsWith('node_height.json'):
@@ -187,101 +161,76 @@ async function graph_explorer (opts) {
         case path.endsWith('horizontal_scroll_value.json'):
           if (typeof value === 'number') horizontal_scroll_value = value
           break
-        case path.endsWith('selected_instance_paths.json'): {
-          const old_paths = [...selected_instance_paths]
-          if (Array.isArray(value)) {
-            selected_instance_paths = value
-          } else {
-            console.warn(
-              'selected_instance_paths is not an array, defaulting to empty.',
-              value
-            )
-            selected_instance_paths = []
-          }
-          const changed_paths = [
-            ...new Set([...old_paths, ...selected_instance_paths])
-          ]
-          changed_paths.forEach(p => render_nodes_needed.add(p))
+        case path.endsWith('selected_instance_paths.json'):
+          selected_instance_paths = process_path_array_update({
+            current_paths: selected_instance_paths,
+            value,
+            render_set: render_nodes_needed,
+            name: 'selected_instance_paths'
+          })
           break
-        }
-        case path.endsWith('confirmed_selected.json'): {
-          const old_paths = [...confirmed_instance_paths]
-          if (Array.isArray(value)) {
-            confirmed_instance_paths = value
-          } else {
-            console.warn(
-              'confirmed_selected is not an array, defaulting to empty.',
-              value
-            )
-            confirmed_instance_paths = []
-          }
-          const changed_paths = [
-            ...new Set([...old_paths, ...confirmed_instance_paths])
-          ]
-          changed_paths.forEach(p => render_nodes_needed.add(p))
+        case path.endsWith('confirmed_selected.json'):
+          confirmed_instance_paths = process_path_array_update({
+            current_paths: confirmed_instance_paths,
+            value,
+            render_set: render_nodes_needed,
+            name: 'confirmed_selected'
+          })
           break
-        }
         case path.endsWith('instance_states.json'):
-          if (
-            typeof value === 'object' &&
-            value !== null &&
-            !Array.isArray(value)
-          ) {
+          if (typeof value === 'object' && value && !Array.isArray(value)) {
             instance_states = value
             needs_render = true
-          } else
+          } else {
             console.warn(
               'instance_states is not a valid object, ignoring.',
               value
             )
+          }
           break
       }
-    }
+    })
 
-    if (needs_render) {
-      build_and_render_view()
-    } else if (render_nodes_needed.size > 0) {
+    if (needs_render) build_and_render_view()
+    else if (render_nodes_needed.size > 0) {
       render_nodes_needed.forEach(re_render_node)
     }
   }
 
   function on_mode ({ data, paths }) {
-    let new_current_mode
-    let new_previous_mode
-    let new_search_query
+    let new_current_mode, new_previous_mode, new_search_query
 
-    for (let i = 0; i < paths.length; i++) {
-      const path = paths[i]
-      const raw_data = data[i]
-      if (raw_data === null) continue
-      let value
-      try {
-        value = JSON.parse(raw_data)
-      } catch (e) {
-        console.error(`Failed to parse JSON for ${path}:`, e)
-        continue
-      }
+    paths.forEach((path, i) => {
+      const value = parse_json_data(data[i], path)
+      if (value === null) return
+
       if (path.endsWith('current_mode.json')) new_current_mode = value
       else if (path.endsWith('previous_mode.json')) new_previous_mode = value
       else if (path.endsWith('search_query.json')) new_search_query = value
-    }
+    })
 
     if (typeof new_search_query === 'string') search_query = new_search_query
     if (new_previous_mode) previous_mode = new_previous_mode
+
+    if (
+      new_current_mode &&
+      !['default', 'menubar', 'search'].includes(new_current_mode)
+    ) {
+      return void console.warn(
+        `Invalid mode "${new_current_mode}" provided. Ignoring update.`
+      )
+    }
+
     if (new_current_mode === 'search' && !search_query) {
       search_state_instances = instance_states
     }
     if (!new_current_mode || mode === new_current_mode) return
 
-    if (mode && new_current_mode === 'search') {
-      update_mode_state('previous_mode', mode)
-    }
+    if (mode && new_current_mode === 'search') update_drive_state({ dataset: 'mode', name: 'previous_mode', value: mode })
     mode = new_current_mode
     render_menubar()
     handle_mode_change()
-    if (mode === 'search' && search_query) {
-      perform_search(search_query)
-    }
+    if (mode === 'search' && search_query) perform_search(search_query)
   }
 
   function inject_style ({ data }) {
@@ -291,20 +240,19 @@ async function graph_explorer (opts) {
   }
 
   // Helper to persist component state to the drive.
-  async function update_runtime_state (name, value) {
+  async function update_drive_state ({ dataset, name, value }) {
     try {
-      await drive.put(`runtime/${name}.json`, JSON.stringify(value))
+      await drive.put(`${dataset}/${name}.json`, JSON.stringify(value))
     } catch (e) {
-      console.error(`Failed to update runtime state for ${name}:`, e)
+      console.error(`Failed to update ${dataset} state for ${name}:`, e)
     }
   }
 
-  async function update_mode_state (name, value) {
-    try {
-      await drive.put(`mode/${name}.json`, JSON.stringify(value))
-    } catch (e) {
-      console.error(`Failed to update mode state for ${name}:`, e)
+  function get_or_create_state (states, instance_path) {
+    if (!states[instance_path]) {
+      states[instance_path] = { expanded_subs: false, expanded_hubs: false }
     }
+    return states[instance_path]
   }
 
   /******************************************************************************
@@ -314,18 +262,13 @@ async function graph_explorer (opts) {
     - `build_view_recursive` creates the flat `view` array from the hierarchical data.
 ******************************************************************************/
   function build_and_render_view (focal_instance_path, hub_toggle = false) {
-    if (Object.keys(all_entries).length === 0) {
-      console.warn('No entries available to render.')
-      return
-    }
+    if (Object.keys(all_entries).length === 0) return void console.warn('No entries available to render.')
+
     const old_view = [...view]
     const old_scroll_top = vertical_scroll_value
     const old_scroll_left = horizontal_scroll_value
-
     let existing_spacer_height = 0
-    if (spacer_element && spacer_element.parentNode) {
-      existing_spacer_height = parseFloat(spacer_element.style.height) || 0
-    }
+    if (spacer_element && spacer_element.parentNode) existing_spacer_height = parseFloat(spacer_element.style.height) || 0
 
     // Recursively build the new `view` array from the graph data.
     view = build_view_recursive({
@@ -339,58 +282,23 @@ async function graph_explorer (opts) {
       all_entries
     })
 
-    // Calculate the new scroll position to maintain the user's viewport.
-    let new_scroll_top = old_scroll_top
-    if (focal_instance_path) {
-      // If an action was focused on a specific node (like a toggle), try to keep it in the same position.
-      const old_toggled_node_index = old_view.findIndex(
-        node => node.instance_path === focal_instance_path
-      )
-      const new_toggled_node_index = view.findIndex(
-        node => node.instance_path === focal_instance_path
-      )
-
-      if (old_toggled_node_index !== -1 && new_toggled_node_index !== -1) {
-        const index_change = new_toggled_node_index - old_toggled_node_index
-        new_scroll_top = old_scroll_top + index_change * node_height
-      }
-    } else if (old_view.length > 0) {
-      // Otherwise, try to keep the topmost visible node in the same position.
-      const old_top_node_index = Math.floor(old_scroll_top / node_height)
-      const scroll_offset = old_scroll_top % node_height
-      const old_top_node = old_view[old_top_node_index]
-      if (old_top_node) {
-        const new_top_node_index = view.findIndex(
-          node => node.instance_path === old_top_node.instance_path
-        )
-        if (new_top_node_index !== -1) {
-          new_scroll_top = new_top_node_index * node_height + scroll_offset
-        }
-      }
-    }
-
-    const render_anchor_index = Math.max(
-      0,
-      Math.floor(new_scroll_top / node_height)
-    )
+    const new_scroll_top = calculate_new_scroll_top({
+      old_scroll_top,
+      old_view,
+      focal_path: focal_instance_path
+    })
+    const render_anchor_index = Math.max(0, Math.floor(new_scroll_top / node_height))
     start_index = Math.max(0, render_anchor_index - chunk_size)
     end_index = Math.min(view.length, render_anchor_index + chunk_size)
 
     const fragment = document.createDocumentFragment()
     for (let i = start_index; i < end_index; i++) {
       if (view[i]) fragment.appendChild(create_node(view[i]))
-      else console.warn(`Missing node at index ${i} in view.`)
     }
 
-    container.replaceChildren()
-    container.appendChild(top_sentinel)
-    container.appendChild(fragment)
-    container.appendChild(bottom_sentinel)
-
+    container.replaceChildren(top_sentinel, fragment, bottom_sentinel)
     top_sentinel.style.height = `${start_index * node_height}px`
-    bottom_sentinel.style.height = `${
-      (view.length - end_index) * node_height
-    }px`
+    bottom_sentinel.style.height = `${(view.length - end_index) * node_height}px`
 
     observer.observe(top_sentinel)
     observer.observe(bottom_sentinel)
@@ -401,35 +309,13 @@ async function graph_explorer (opts) {
       vertical_scroll_value = container.scrollTop
     }
 
-    // Handle the spacer element used for keep entries static wrt cursor by scrolling when hubs are toggled.
-    if (hub_toggle || hub_num > 0) {
-      spacer_element = document.createElement('div')
-      spacer_element.className = 'spacer'
-      container.appendChild(spacer_element)
-
-      if (hub_toggle) {
-        requestAnimationFrame(() => {
-          const container_height = container.clientHeight
-          const content_height = view.length * node_height
-          const max_scroll_top = content_height - container_height
-
-          if (new_scroll_top > max_scroll_top) {
-            spacer_initial_height = new_scroll_top - max_scroll_top
-            spacer_initial_scroll_top = new_scroll_top
-            spacer_element.style.height = `${spacer_initial_height}px`
-          }
-          set_scroll_and_sync()
-        })
-      } else {
-        spacer_element.style.height = `${existing_spacer_height}px`
-        requestAnimationFrame(set_scroll_and_sync)
-      }
-    } else {
-      spacer_element = null
-      spacer_initial_height = 0
-      spacer_initial_scroll_top = 0
-      requestAnimationFrame(set_scroll_and_sync)
-    }
+   // Handle the spacer element used for keep entries static wrt cursor by scrolling when hubs are toggled.
+    handle_spacer_element({
+      hub_toggle,
+      existing_height: existing_spacer_height,
+      new_scroll_top,
+      sync_fn: set_scroll_and_sync
+    })
   }
 
   // Traverses the hierarchical `all_entries` data and builds a flat `view` array for rendering.
@@ -449,16 +335,9 @@ async function graph_explorer (opts) {
     const entry = all_entries[base_path]
     if (!entry) return []
 
-    if (!instance_states[instance_path]) {
-      instance_states[instance_path] = {
-        expanded_subs: false,
-        expanded_hubs: false
-      }
-    }
-    const state = instance_states[instance_path]
+    const state = get_or_create_state(instance_states, instance_path)
     const is_hub_on_top =
-      base_path === all_entries[parent_base_path]?.hubs?.[0] ||
-      base_path === '/'
+      base_path === all_entries[parent_base_path]?.hubs?.[0] || base_path === '/'
 
     // Calculate the pipe trail for drawing the tree lines. Quite complex logic here.
     const children_pipe_trail = [...parent_pipe_trail]
@@ -494,8 +373,8 @@ async function graph_explorer (opts) {
     // If hubs are expanded, recursively add them to the view first (they appear above the node).
     if (state.expanded_hubs && Array.isArray(entry.hubs)) {
       entry.hubs.forEach((hub_path, i, arr) => {
-        current_view = current_view.concat(
-          build_view_recursive({
+        current_view.push(
+          ...build_view_recursive({
             base_path: hub_path,
             parent_instance_path: instance_path,
             parent_base_path: base_path,
@@ -527,8 +406,8 @@ async function graph_explorer (opts) {
     // If subs are expanded, recursively add them to the view (they appear below the node).
     if (state.expanded_subs && Array.isArray(entry.subs)) {
       entry.subs.forEach((sub_path, i, arr) => {
-        current_view = current_view.concat(
-          build_view_recursive({
+        current_view.push(
+          ...build_view_recursive({
             base_path: sub_path,
             parent_instance_path: instance_path,
             depth: depth + 1,
@@ -560,13 +439,11 @@ async function graph_explorer (opts) {
     is_hub_on_top,
     is_search_match,
     is_direct_match,
-    is_in_original_view
+    is_in_original_view,
+    query
   }) {
     const entry = all_entries[base_path]
     if (!entry) {
-      console.error(
-        `Entry not found for path: ${base_path}. Cannot create node.`
-      )
       const err_el = document.createElement('div')
       err_el.className = 'node error'
       err_el.textContent = `Error: Missing entry for ${base_path}`
@@ -574,138 +451,54 @@ async function graph_explorer (opts) {
     }
 
     const states = mode === 'search' ? search_state_instances : instance_states
-    let state = states[instance_path]
-    if (!state) {
-      console.warn(
-        `State not found for instance: ${instance_path}. Using default.`
-      )
-      state = { expanded_subs: false, expanded_hubs: false }
-      states[instance_path] = state
-    }
-
+    const state = get_or_create_state(states, instance_path)
     const el = document.createElement('div')
     el.className = `node type-${entry.type || 'unknown'}`
     el.dataset.instance_path = instance_path
 
     if (is_search_match) {
       el.classList.add('search-result')
-      if (is_direct_match) {
-        el.classList.add('direct-match')
-      }
-      if (!is_in_original_view) {
-        el.classList.add('new-entry')
-      }
+      if (is_direct_match) el.classList.add('direct-match')
+      if (!is_in_original_view) el.classList.add('new-entry')
     }
 
-    if (selected_instance_paths.includes(instance_path))
-      el.classList.add('selected')
-    if (confirmed_instance_paths.includes(instance_path))
-      el.classList.add('confirmed')
+    if (selected_instance_paths.includes(instance_path)) el.classList.add('selected')
+    if (confirmed_instance_paths.includes(instance_path)) el.classList.add('confirmed')
 
     const has_hubs = Array.isArray(entry.hubs) && entry.hubs.length > 0
     const has_subs = Array.isArray(entry.subs) && entry.subs.length > 0
 
-    if (depth) {
-      el.style.paddingLeft = '17.5px'
-    }
+    if (depth) el.style.paddingLeft = '17.5px'
     el.style.height = `${node_height}px`
 
-    // Handle the special case for the root node since its a bit different.
-    if (base_path === '/' && instance_path === '|/') {
-      const { expanded_subs } = state
-      const prefix_class_name = expanded_subs ? 'tee-down' : 'line-h'
-      const prefix_class =
-        has_subs && mode !== 'search' ? 'prefix clickable' : 'prefix'
-      el.innerHTML = `<div class="wand">🪄</div><span class="${prefix_class} ${prefix_class_name}"></span><span class="name clickable">/🌐</span>`
+    if (base_path === '/' && instance_path === '|/') return create_root_node({ state, has_subs, instance_path })
 
-      const wand_el = el.querySelector('.wand')
-      if (wand_el) wand_el.onclick = reset
-
-      if (has_subs) {
-        const prefix_el = el.querySelector('.prefix')
-        if (prefix_el) {
-          if (mode !== 'search') {
-            prefix_el.onclick = () => toggle_subs(instance_path)
-          } else {
-            prefix_el.onclick = null
-          }
-        }
-      }
-
-      const name_el = el.querySelector('.name')
-      if (name_el)
-        name_el.onclick = ev => select_node(ev, instance_path, base_path)
-
-      return el
-    }
-
-    const prefix_class_name = get_prefix({
-      is_last_sub,
-      has_subs,
-      state,
-      is_hub,
-      is_hub_on_top
-    })
-    const pipe_html = pipe_trail
-      .map(
-        should_pipe => `<span class="${should_pipe ? 'pipe' : 'blank'}"></span>`
-      )
-      .join('')
-
-    const prefix_class =
-      has_subs && mode !== 'search' ? 'prefix clickable' : 'prefix'
-    const icon_class =
-      has_hubs && base_path !== '/' && mode !== 'search'
-        ? 'icon clickable'
-        : 'icon'
+    const prefix_class_name = get_prefix({ is_last_sub, has_subs, state, is_hub, is_hub_on_top })
+    const pipe_html = pipe_trail.map(p => `<span class="${p ? 'pipe' : 'blank'}"></span>`).join('')
+    const prefix_class = has_subs && mode !== 'search' ? 'prefix clickable' : 'prefix'
+    const icon_class = has_hubs && base_path !== '/' && mode !== 'search' ? 'icon clickable' : 'icon'
+    const entry_name = entry.name || base_path
+    const name_html = (is_direct_match && query)
+      ? get_highlighted_name(entry_name, query)
+      : entry_name
 
     el.innerHTML = `
-    <span class="indent">${pipe_html}</span>
+      <span class="indent">${pipe_html}</span>
       <span class="${prefix_class} ${prefix_class_name}"></span>
       <span class="${icon_class}"></span>
-      <span class="name clickable">${entry.name || base_path}</span>
+      <span class="name clickable">${name_html}</span>
     `
 
-    if (has_hubs && base_path !== '/') {
-      const icon_el = el.querySelector('.icon')
-      if (icon_el) {
-        if (mode !== 'search') {
-          icon_el.onclick = () => toggle_hubs(instance_path)
-        } else {
-          icon_el.onclick = null
-        }
-      }
-    }
+    const icon_el = el.querySelector('.icon')
+    if (icon_el && has_hubs && base_path !== '/') icon_el.onclick = mode !== 'search' ? () => toggle_hubs(instance_path) : null
 
-    if (has_subs) {
-      const prefix_el = el.querySelector('.prefix')
-      if (prefix_el) {
-        if (mode !== 'search') {
-          prefix_el.onclick = () => toggle_subs(instance_path)
-        } else {
-          prefix_el.onclick = null
-        }
-      }
-    }
+    const prefix_el = el.querySelector('.prefix')
+    if (prefix_el && has_subs) prefix_el.onclick = mode !== 'search' ? () => toggle_subs(instance_path) : null
 
-    const name_el = el.querySelector('.name')
-    if (name_el)
-      name_el.onclick = ev => select_node(ev, instance_path, base_path)
+    el.querySelector('.name').onclick = ev => select_node(ev, instance_path)
 
-    if (
-      selected_instance_paths.includes(instance_path) ||
-      confirmed_instance_paths.includes(instance_path)
-    ) {
-      const checkbox_div = document.createElement('div')
-      checkbox_div.className = 'confirm-wrapper'
-      const is_confirmed = confirmed_instance_paths.includes(instance_path)
-      checkbox_div.innerHTML = `<input type="checkbox" ${
-        is_confirmed ? 'checked' : ''
-      }>`
-      const checkbox_input = checkbox_div.querySelector('input')
-      if (checkbox_input)
-        checkbox_input.onchange = ev => handle_confirm(ev, instance_path)
-      el.appendChild(checkbox_div)
+    if (selected_instance_paths.includes(instance_path) || confirmed_instance_paths.includes(instance_path)) {
+      el.appendChild(create_confirm_checkbox(instance_path))
     }
 
     return el
@@ -715,13 +508,8 @@ async function graph_explorer (opts) {
   function re_render_node (instance_path) {
     const node_data = view.find(n => n.instance_path === instance_path)
     if (node_data) {
-      const old_node_el = shadow.querySelector(
-        `[data-instance_path="${CSS.escape(instance_path)}"]`
-      )
-      if (old_node_el) {
-        const new_node_el = create_node(node_data)
-        old_node_el.replaceWith(new_node_el)
-      }
+      const old_node_el = shadow.querySelector(`[data-instance_path="${CSS.escape(instance_path)}"]`)
+      if (old_node_el) old_node_el.replaceWith(create_node(node_data))
     }
   }
 
@@ -755,7 +543,7 @@ async function graph_explorer (opts) {
       if (expanded_subs) return 'middle-tee-down'
       if (expanded_hubs)
         return has_subs ? 'middle-tee-up' : 'middle-light-tee-up'
-      return has_subs ? 'middle-line' : 'middle-light-line'
+    return has_subs ? 'middle-line' : 'middle-light-line'
     }
   }
 
@@ -763,59 +551,50 @@ async function graph_explorer (opts) {
   5. MENUBAR AND SEARCH
 ******************************************************************************/
   function render_menubar () {
-    menubar.replaceChildren() // Clear existing menubar
-    const search_button = document.createElement('button')
-    search_button.textContent = 'Search'
-    search_button.onclick = toggle_search_mode
+    const search_button = Object.assign(document.createElement('button'), {
+      textContent: 'Search',
+      onclick: toggle_search_mode
+    })
 
-    menubar.appendChild(search_button)
+    if (mode !== 'search') return void menubar.replaceChildren(search_button)
 
-    if (mode === 'search') {
-      const search_input = document.createElement('input')
-      search_input.type = 'text'
-      search_input.placeholder = 'Search entries...'
-      search_input.className = 'search-input'
-      search_input.oninput = on_search_input
-      search_input.value = search_query
-      menubar.appendChild(search_input)
-      requestAnimationFrame(() => search_input.focus())
-    }
+    const search_input = Object.assign(document.createElement('input'), {
+      type: 'text',
+      placeholder: 'Search entries...',
+      className: 'search-input',
+      value: search_query,
+      oninput: on_search_input
+    })
+
+    menubar.replaceChildren(search_button, search_input)
+    requestAnimationFrame(() => search_input.focus())
   }
 
   function handle_mode_change () {
-    if (mode === 'default') {
-      menubar.style.display = 'none'
-    } else {
-      menubar.style.display = 'flex'
-    }
+    menubar.style.display = mode === 'default' ? 'none' : 'flex'
     build_and_render_view()
   }
 
   function toggle_search_mode () {
-    const new_mode = mode === 'search' ? previous_mode : 'search'
     if (mode === 'search') {
       search_query = ''
       drive_updated_by_search = true
-      update_mode_state('search_query', '')
+      update_drive_state({ dataset: 'mode', name: 'search_query', value: '' })
     }
-    update_mode_state('current_mode', new_mode)
+    update_drive_state({ dataset: 'mode', name: 'current_mode', value: mode === 'search' ? previous_mode : 'search' })
     search_state_instances = instance_states
   }
 
   function on_search_input (event) {
-    const query = event.target.value.trim()
-    search_query = query
+    search_query = event.target.value.trim()
     drive_updated_by_search = true
-    update_mode_state('search_query', query)
-    if (query === '') search_state_instances = instance_states
-    perform_search(query)
+    update_drive_state({ dataset: 'mode', name: 'search_query', value: search_query })
+    if (search_query === '') search_state_instances = instance_states
+    perform_search(search_query)
   }
 
   function perform_search (query) {
-    if (!query) {
-      build_and_render_view()
-      return
-    }
+    if (!query) return build_and_render_view()
     const original_view = build_view_recursive({
       base_path: '/',
       parent_instance_path: '',
@@ -858,46 +637,31 @@ async function graph_explorer (opts) {
     if (!entry) return []
 
     const instance_path = `${parent_instance_path}|${base_path}`
-    const is_direct_match =
-      entry.name && entry.name.toLowerCase().includes(query.toLowerCase())
+    const is_direct_match = entry.name && entry.name.toLowerCase().includes(query.toLowerCase())
 
-    let sub_results = []
-    if (Array.isArray(entry.subs)) {
-      const children_pipe_trail = [...parent_pipe_trail]
-      if (depth > 0) children_pipe_trail.push(!is_last_sub)
+    const children_pipe_trail = [...parent_pipe_trail]
+    if (depth > 0) children_pipe_trail.push(!is_last_sub)
 
-      sub_results = entry.subs
-        .map((sub_path, i, arr) => {
-          return build_search_view_recursive({
-            query,
-            base_path: sub_path,
-            parent_instance_path: instance_path,
-            depth: depth + 1,
-            is_last_sub: i === arr.length - 1,
-            is_hub: false,
-            parent_pipe_trail: children_pipe_trail,
-            instance_states,
-            all_entries,
-            original_view
-          })
-        })
-        .flat()
-    }
+    const sub_results = (entry.subs || []).flatMap((sub_path, i, arr) =>
+      build_search_view_recursive({
+        query,
+        base_path: sub_path,
+        parent_instance_path: instance_path,
+        depth: depth + 1,
+        is_last_sub: i === arr.length - 1,
+        is_hub: false,
+        parent_pipe_trail: children_pipe_trail,
+        instance_states,
+        all_entries,
+        original_view
+      })
+    )
 
     const has_matching_descendant = sub_results.length > 0
+    if (!is_direct_match && !has_matching_descendant) return []
 
-    if (!is_direct_match && !has_matching_descendant) {
-      return []
-    }
-
-    instance_states[instance_path] = {
-      expanded_subs: has_matching_descendant,
-      expanded_hubs: false
-    }
-
-    const is_in_original_view = original_view.some(
-      node => node.instance_path === instance_path
-    )
+    instance_states[instance_path] = { expanded_subs: has_matching_descendant, expanded_hubs: false }
+    const is_in_original_view = original_view.some(node => node.instance_path === instance_path)
 
     const current_node_view = {
       base_path,
@@ -917,21 +681,15 @@ async function graph_explorer (opts) {
 
   function render_search_results (search_view, query) {
     view = search_view
-    container.replaceChildren()
-
     if (search_view.length === 0) {
       const no_results_el = document.createElement('div')
       no_results_el.className = 'no-results'
       no_results_el.textContent = `No results for "${query}"`
-      container.appendChild(no_results_el)
-      return
+      return container.replaceChildren(no_results_el)
     }
-
     const fragment = document.createDocumentFragment()
-    for (const node_data of search_view) {
-      fragment.appendChild(create_node(node_data))
-    }
-    container.appendChild(fragment)
+    search_view.forEach(node_data => fragment.appendChild(create_node({ ...node_data, query })))
+    container.replaceChildren(fragment)
   }
 
   /******************************************************************************
@@ -944,114 +702,71 @@ async function graph_explorer (opts) {
       let current_path = instance_path
       // Traverse up the tree to expand all parents
       while (current_path) {
-        const parent_path = current_path.substring(
-          0,
-          current_path.lastIndexOf('|')
-        )
-        if (!parent_path) break // Stop if there's no parent left
-
-        if (!instance_states[parent_path]) {
-          instance_states[parent_path] = {
-            expanded_subs: false,
-            expanded_hubs: false
-          }
-        }
-        instance_states[parent_path].expanded_subs = true
+        const parent_path = current_path.substring(0, current_path.lastIndexOf('|'))
+        if (!parent_path) break
+        get_or_create_state(instance_states, parent_path).expanded_subs = true
         current_path = parent_path
       }
       drive_updated_by_toggle = true
-      update_runtime_state('instance_states', instance_states)
-      update_mode_state('current_mode', previous_mode)
+      update_drive_state({ dataset: 'runtime', name: 'instance_states', value: instance_states })
+      update_drive_state({ dataset: 'mode', name: 'current_mode', value: previous_mode })
     }
 
+    const new_selected = new Set(selected_instance_paths)
     if (ev.ctrlKey) {
-      const new_selected_paths = [...selected_instance_paths]
-      const index = new_selected_paths.indexOf(instance_path)
-      if (index > -1) {
-        new_selected_paths.splice(index, 1)
-      } else {
-        new_selected_paths.push(instance_path)
-      }
-      update_runtime_state('selected_instance_paths', new_selected_paths)
+      new_selected.has(instance_path) ? new_selected.delete(instance_path) : new_selected.add(instance_path)
+      update_drive_state({ dataset: 'runtime', name: 'selected_instance_paths', value: [...new_selected] })
     } else {
-      update_runtime_state('selected_instance_paths', [instance_path])
+      update_drive_state({ dataset: 'runtime', name: 'selected_instance_paths', value: [instance_path] })
     }
   }
 
   function handle_confirm (ev, instance_path) {
-    if (!ev.target) return console.warn('Checkbox event target is missing.')
+    if (!ev.target) return
     const is_checked = ev.target.checked
-    const new_selected_paths = [...selected_instance_paths]
-    const new_confirmed_paths = [...confirmed_instance_paths]
+    const new_selected = new Set(selected_instance_paths)
+    const new_confirmed = new Set(confirmed_instance_paths)
 
     if (is_checked) {
-      const idx = new_selected_paths.indexOf(instance_path)
-      if (idx > -1) new_selected_paths.splice(idx, 1)
-      if (!new_confirmed_paths.includes(instance_path)) {
-        new_confirmed_paths.push(instance_path)
-      }
+      new_selected.delete(instance_path)
+      new_confirmed.add(instance_path)
     } else {
-      if (!new_selected_paths.includes(instance_path)) {
-        new_selected_paths.push(instance_path)
-      }
-      const idx = new_confirmed_paths.indexOf(instance_path)
-      if (idx > -1) new_confirmed_paths.splice(idx, 1)
+      new_selected.add(instance_path)
+      new_confirmed.delete(instance_path)
     }
-    update_runtime_state('selected_instance_paths', new_selected_paths)
-    update_runtime_state('confirmed_selected', new_confirmed_paths)
+
+    update_drive_state({ dataset: 'runtime', name: 'selected_instance_paths', value: [...new_selected] })
+    update_drive_state({ dataset: 'runtime', name: 'confirmed_selected', value: [...new_confirmed] })
   }
 
   function toggle_subs (instance_path) {
-    if (!instance_states[instance_path]) {
-      console.warn(
-        `Toggling subs for non-existent state: ${instance_path}. Creating default state.`
-      )
-      instance_states[instance_path] = {
-        expanded_subs: false,
-        expanded_hubs: false
-      }
-    }
-    const state = instance_states[instance_path]
+    const state = get_or_create_state(instance_states, instance_path)
     state.expanded_subs = !state.expanded_subs
     build_and_render_view(instance_path)
     // Set a flag to prevent the subsequent `onbatch` call from causing a render loop.
     drive_updated_by_toggle = true
-    update_runtime_state('instance_states', instance_states)
+    update_drive_state({ dataset: 'runtime', name: 'instance_states', value: instance_states })
   }
 
   function toggle_hubs (instance_path) {
-    if (!instance_states[instance_path]) {
-      console.warn(
-        `Toggling hubs for non-existent state: ${instance_path}. Creating default state.`
-      )
-      instance_states[instance_path] = {
-        expanded_subs: false,
-        expanded_hubs: false
-      }
-    }
-    const state = instance_states[instance_path]
+    const state = get_or_create_state(instance_states, instance_path)
     state.expanded_hubs ? hub_num-- : hub_num++
     state.expanded_hubs = !state.expanded_hubs
     build_and_render_view(instance_path, true)
     drive_updated_by_toggle = true
-    update_runtime_state('instance_states', instance_states)
+    update_drive_state({ dataset: 'runtime', name: 'instance_states', value: instance_states })
   }
 
   function reset () {
-    const root_path = '/'
     const root_instance_path = '|/'
-    const new_instance_states = {}
-    if (all_entries[root_path]) {
-      new_instance_states[root_instance_path] = {
-        expanded_subs: true,
-        expanded_hubs: false
-      }
+    const new_instance_states = {
+      [root_instance_path]: { expanded_subs: true, expanded_hubs: false }
     }
-    update_runtime_state('vertical_scroll_value', 0)
-    update_runtime_state('horizontal_scroll_value', 0)
-    update_runtime_state('selected_instance_paths', [])
-    update_runtime_state('confirmed_selected', [])
-    update_runtime_state('instance_states', new_instance_states)
+    update_drive_state({ dataset: 'runtime', name: 'vertical_scroll_value', value: 0 })
+    update_drive_state({ dataset: 'runtime', name: 'horizontal_scroll_value', value: 0 })
+    update_drive_state({ dataset: 'runtime', name: 'selected_instance_paths', value: [] })
+    update_drive_state({ dataset: 'runtime', name: 'confirmed_selected', value: [] })
+    update_drive_state({ dataset: 'runtime', name: 'instance_states', value: new_instance_states })
   }
 
   /******************************************************************************
@@ -1064,26 +779,16 @@ async function graph_explorer (opts) {
     scroll_update_pending = true
     requestAnimationFrame(() => {
       const scroll_delta = vertical_scroll_value - container.scrollTop
-
       // Handle removal of the scroll spacer.
-      if (spacer_element && scroll_delta > 0 && container.scrollTop == 0) {
+      if (spacer_element && scroll_delta > 0 && container.scrollTop === 0) {
         spacer_element.remove()
         spacer_element = null
         spacer_initial_height = 0
-        spacer_initial_scroll_top = 0
         hub_num = 0
       }
 
-      if (vertical_scroll_value !== container.scrollTop) {
-        vertical_scroll_value = container.scrollTop
-        drive_updated_by_scroll = true // Set flag to prevent render loop.
-        update_runtime_state('vertical_scroll_value', vertical_scroll_value)
-      }
-      if (horizontal_scroll_value !== container.scrollLeft) {
-        horizontal_scroll_value = container.scrollLeft
-        drive_updated_by_scroll = true
-        update_runtime_state('horizontal_scroll_value', horizontal_scroll_value)
-      }
+      vertical_scroll_value = update_scroll_state({ current_value: vertical_scroll_value, new_value: container.scrollTop, name: 'vertical_scroll_value' })
+      horizontal_scroll_value = update_scroll_state({ current_value: horizontal_scroll_value, new_value: container.scrollLeft, name: 'horizontal_scroll_value' })
       scroll_update_pending = false
     })
   }
@@ -1093,10 +798,7 @@ async function graph_explorer (opts) {
     is_rendering = true
     const container_rect = container.getBoundingClientRect()
     let sentinel_rect = bottom_sentinel.getBoundingClientRect()
-    while (
-      end_index < view.length &&
-      sentinel_rect.top < container_rect.bottom + 500
-    ) {
+    while (end_index < view.length && sentinel_rect.top < container_rect.bottom + 500) {
       render_next_chunk()
       await new Promise(resolve => requestAnimationFrame(resolve))
       sentinel_rect = bottom_sentinel.getBoundingClientRect()
@@ -1134,9 +836,7 @@ async function graph_explorer (opts) {
       if (view[i]) fragment.appendChild(create_node(view[i]))
     container.insertBefore(fragment, bottom_sentinel)
     end_index = next_end
-    bottom_sentinel.style.height = `${
-      (view.length - end_index) * node_height
-    }px`
+    bottom_sentinel.style.height = `${(view.length - end_index) * node_height}px`
     cleanup_dom(false)
   }
 
@@ -1144,8 +844,9 @@ async function graph_explorer (opts) {
     if (start_index <= 0) return
     const fragment = document.createDocumentFragment()
     const prev_start = Math.max(0, start_index - chunk_size)
-    for (let i = prev_start; i < start_index; i++)
+    for (let i = prev_start; i < start_index; i++) {
       if (view[i]) fragment.appendChild(create_node(view[i]))
+    }
     container.insertBefore(fragment, top_sentinel.nextSibling)
     start_index = prev_start
     top_sentinel.style.height = `${start_index * node_height}px`
@@ -1160,32 +861,170 @@ async function graph_explorer (opts) {
     const to_remove_count = rendered_count - max_rendered_nodes
     if (is_scrolling_up) {
       // If scrolling up, remove nodes from the bottom.
-      for (let i = 0; i < to_remove_count; i++) {
-        const temp = bottom_sentinel.previousElementSibling
-        if (temp && temp !== top_sentinel) {
-          temp.remove()
-        }
-      }
+      remove_dom_nodes({ count: to_remove_count, start_el: bottom_sentinel, next_prop: 'previousElementSibling', boundary_el: top_sentinel })
       end_index -= to_remove_count
-      bottom_sentinel.style.height = `${
-        (view.length - end_index) * node_height
-      }px`
+      bottom_sentinel.style.height = `${(view.length - end_index) * node_height}px`
     } else {
       // If scrolling down, remove nodes from the top.
-      for (let i = 0; i < to_remove_count; i++) {
-        const temp = top_sentinel.nextElementSibling
-        if (temp && temp !== bottom_sentinel) {
-          temp.remove()
-        }
-      }
+      remove_dom_nodes({ count: to_remove_count, start_el: top_sentinel, next_prop: 'nextElementSibling', boundary_el: bottom_sentinel })
       start_index += to_remove_count
       top_sentinel.style.height = `${start_index * node_height}px`
+    }
+  }
+
+  /******************************************************************************
+  8. HELPER FUNCTIONS
+  ******************************************************************************/
+function get_highlighted_name (name, query) {
+  // Creates a new regular expression.
+  // `escape_regex(query)` sanitizes the query string to treat special regex characters literally.
+  // `(...)` creates a capturing group for the escaped query.
+  // 'gi' flags: 'g' for global (all occurrences), 'i' for case-insensitive.
+  const regex = new RegExp(`(${escape_regex(query)})`, 'gi')
+  // Replaces all matches of the regex in 'name' with the matched text wrapped in <b> tags.
+  // '$1' refers to the content of the first capturing group (the matched query).
+  return name.replace(regex, '<b>$1</b>')
+}
+
+function escape_regex (string) {
+  // Escapes special regular expression characters in a string.
+  // It replaces characters like -, /, \, ^, $, *, +, ?, ., (, ), |, [, ], {, }
+  // with their escaped versions (e.g., '.' becomes '\.').
+  // This prevents them from being interpreted as regex metacharacters.
+  return string.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&') // Corrected: should be \\$& to escape the found char
+}
+
+  function check_and_reset_feedback_flags () {
+    if (drive_updated_by_scroll) {
+      drive_updated_by_scroll = false
+      return true
+    }
+    if (drive_updated_by_toggle) {
+      drive_updated_by_toggle = false
+      return true
+    }
+    if (drive_updated_by_search) {
+      drive_updated_by_search = false
+      return true
+    }
+    return false
+  }
+
+  function parse_json_data (data, path) {
+    if (data === null) return null
+    try {
+      return typeof data === 'string' ? JSON.parse(data) : data
+    } catch (e) {
+      console.error(`Failed to parse JSON for ${path}:`, e)
+      return null
+    }
+  }
+
+  function process_path_array_update ({ current_paths, value, render_set, name }) {
+    const old_paths = [...current_paths]
+    const new_paths = Array.isArray(value)
+      ? value
+      : (console.warn(`${name} is not an array, defaulting to empty.`, value), [])
+    ;[...new Set([...old_paths, ...new_paths])].forEach(p => render_set.add(p))
+    return new_paths
+  }
+
+  function calculate_new_scroll_top ({ old_scroll_top, old_view, focal_path }) {
+    // Calculate the new scroll position to maintain the user's viewport.
+    if (focal_path) {
+      // If an action was focused on a specific node (like a toggle), try to keep it in the same position.
+      const old_idx = old_view.findIndex(n => n.instance_path === focal_path)
+      const new_idx = view.findIndex(n => n.instance_path === focal_path)
+      if (old_idx !== -1 && new_idx !== -1) {
+        return old_scroll_top + (new_idx - old_idx) * node_height
+      }
+    } else if (old_view.length > 0) {
+      // Otherwise, try to keep the topmost visible node in the same position.
+      const old_top_idx = Math.floor(old_scroll_top / node_height)
+      const old_top_node = old_view[old_top_idx]
+      if (old_top_node) {
+        const new_top_idx = view.findIndex(n => n.instance_path === old_top_node.instance_path)
+        if (new_top_idx !== -1) {
+          return new_top_idx * node_height + (old_scroll_top % node_height)
+        }
+      }
+    }
+    return old_scroll_top
+  }
+
+  function handle_spacer_element ({ hub_toggle, existing_height, new_scroll_top, sync_fn }) {
+    if (hub_toggle || hub_num > 0) {
+      spacer_element = document.createElement('div')
+      spacer_element.className = 'spacer'
+      container.appendChild(spacer_element)
+
+      if (hub_toggle) {
+        requestAnimationFrame(() => {
+          const max_scroll = container.scrollHeight - container.clientHeight
+          if (new_scroll_top > max_scroll) {
+            spacer_element.style.height = `${new_scroll_top - max_scroll}px`
+          }
+          sync_fn()
+        })
+      } else {
+        spacer_element.style.height = `${existing_height}px`
+        requestAnimationFrame(sync_fn)
+      }
+    } else {
+      spacer_element = null
+      spacer_initial_height = 0
+      requestAnimationFrame(sync_fn)
+    }
+  }
+
+  function create_root_node ({ state, has_subs, instance_path }) {
+    // Handle the special case for the root node since its a bit different.
+    const el = document.createElement('div')
+    el.className = 'node type-root'
+    el.dataset.instance_path = instance_path
+    const prefix_class = has_subs && mode !== 'search' ? 'prefix clickable' : 'prefix'
+    const prefix_name = state.expanded_subs ? 'tee-down' : 'line-h'
+    el.innerHTML = `<div class="wand">🪄</div><span class="${prefix_class} ${prefix_name}"></span><span class="name clickable">/🌐</span>`
+
+    el.querySelector('.wand').onclick = reset
+    if (has_subs) {
+      const prefix_el = el.querySelector('.prefix')
+      if (prefix_el) prefix_el.onclick = mode !== 'search' ? () => toggle_subs(instance_path) : null
+    }
+    el.querySelector('.name').onclick = ev => select_node(ev, instance_path)
+    return el
+  }
+
+  function create_confirm_checkbox (instance_path) {
+    const checkbox_div = document.createElement('div')
+    checkbox_div.className = 'confirm-wrapper'
+    const is_confirmed = confirmed_instance_paths.includes(instance_path)
+    checkbox_div.innerHTML = `<input type="checkbox" ${is_confirmed ? 'checked' : ''}>`
+    const checkbox_input = checkbox_div.querySelector('input')
+    if (checkbox_input) checkbox_input.onchange = ev => handle_confirm(ev, instance_path)
+    return checkbox_div
+  }
+
+  function update_scroll_state ({ current_value, new_value, name }) {
+    if (current_value !== new_value) {
+      drive_updated_by_scroll = true // Set flag to prevent render loop.
+      update_drive_state({ dataset: 'runtime', name, value: new_value })
+      return new_value
+    }
+    return current_value
+  }
+
+  function remove_dom_nodes ({ count, start_el, next_prop, boundary_el }) {
+    for (let i = 0; i < count; i++) {
+      const temp = start_el[next_prop]
+      if (temp && temp !== boundary_el) temp.remove()
+      else break
     }
   }
 }
 
 /******************************************************************************
-  8. FALLBACK CONFIGURATION
+  9. FALLBACK CONFIGURATION
     - This provides the default data and API configuration for the component,
       following the pattern described in `instructions.md`.
     - It defines the default datasets (`entries`, `style`, `runtime`) and their
@@ -1203,96 +1042,7 @@ function fallback_module () {
         },
         'style/': {
           'theme.css': {
-            raw: `
-              .graph-container, .node {
-                font-family: monospace;
-              }
-              .graph-container {
-                color: #abb2bf;
-                background-color: #282c34;
-                padding: 10px;
-                height: 500px; /* Or make it flexible */
-                overflow: auto;
-              }
-              .node {
-                display: flex;
-                align-items: center;
-                white-space: nowrap;
-                cursor: default;
-              }
-              .node.error {
-                color: red;
-              }
-              .node.selected {
-                background-color: #776346;
-              }
-              .node.confirmed {
-                background-color: #774346;
-              }
-              .node.new-entry {
-                background-color: #87ceeb; /* sky blue */
-              }
-              .menubar {
-                display: flex;
-                padding: 5px;
-                background-color: #21252b;
-                border-bottom: 1px solid #181a1f;
-              }
-              .search-input {
-                margin-left: auto;
-                background-color: #282c34;
-                color: #abb2bf;
-                border: 1px solid #181a1f;
-              }
-              .confirm-wrapper {
-                margin-left: auto;
-                padding-left: 10px;
-              }
-              .indent {
-                display: flex;
-              }
-              .pipe {
-                text-align: center;
-              }
-              .pipe::before { content: '┃'; }
-              .blank {
-                width: 8.5px;
-                text-align: center;
-              }
-              .clickable {
-                cursor: pointer;
-              }
-              .prefix, .icon {
-                margin-right: 2px;
-              }
-              .top-cross::before { content: '┏╋'; }
-              .top-tee-down::before { content: '┏┳'; }
-              .top-tee-up::before { content: '┏┻'; }
-              .top-line::before { content: '┏━'; }
-              .middle-cross::before { content: '┣╋'; }
-              .middle-tee-down::before { content: '┣┳'; }
-              .middle-tee-up::before { content: '┣┻'; }
-              .middle-line::before { content: '┣━'; }
-              .bottom-cross::before { content: '┗╋'; }
-              .bottom-tee-down::before { content: '┗┳'; }
-              .bottom-tee-up::before { content: '┗┻'; }
-              .bottom-line::before { content: '┗━'; }
-              .bottom-light-tee-up::before { content: '┖┸'; }
-              .bottom-light-line::before { content: '┖─'; }
-              .middle-light-tee-up::before { content: '┠┸'; }
-              .middle-light-line::before { content: '┠─'; }
-              .tee-down::before { content: '┳'; }
-              .line-h::before { content: '━'; }
-              .icon { display: inline-block; text-align: center; }
-              .name { flex-grow: 1; }
-              .node.type-root > .icon::before { content: '🌐'; }
-              .node.type-folder > .icon::before { content: '📁'; }
-              .node.type-html-file > .icon::before { content: '📄'; }
-              .node.type-js-file > .icon::before { content: '📜'; }
-              .node.type-css-file > .icon::before { content: '🎨'; }
-              .node.type-json-file > .icon::before { content: '📝'; }
-              .node.type-file > .icon::before { content: '📄'; }
-            `
+            '$ref' : 'theme.css'
           }
         },
         'runtime/': {
@@ -1312,7 +1062,6 @@ function fallback_module () {
     }
   }
 }
-
 }).call(this)}).call(this,"/node_modules/graph-explorer/lib/graph_explorer.js")
 },{"./STATE":1}],3:[function(require,module,exports){
 arguments[4][1][0].apply(exports,arguments)
@@ -1670,7 +1419,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/action_bar/action_bar.js")
-},{"STATE":3,"actions":5,"quick_actions":12,"steps_wizard":15}],5:[function(require,module,exports){
+},{"STATE":3,"actions":5,"quick_actions":13,"steps_wizard":16}],5:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -2515,6 +2264,29 @@ function fallback_module () {
 
 }).call(this)}).call(this,"/src/node_modules/form_input.js")
 },{"STATE":3}],8:[function(require,module,exports){
+module.exports = { resource }
+
+function resource (timeout = 1000) {
+  const states = {}
+  return { set, get }
+  function load (pid) { return states[pid] || (states[pid] = { item: null, pending: [] }) }
+  function set (pid, item) {
+    const state = load(pid)
+    state.item = item
+    const { pending } = state
+    state.pending = []
+    pending.map(wait => wait.resolve(item))
+  }
+  function get (pid) {
+    return new Promise(on)
+    function on (resolve, reject) {
+      const { item, pending } = load(pid)
+      if (item) return resolve(item)
+      pending.push({ resolve, reject })
+    }
+  }
+} 
+},{}],9:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -2710,7 +2482,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/input_test.js")
-},{"STATE":3}],9:[function(require,module,exports){
+},{"STATE":3}],10:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3026,7 +2798,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/manager/manager.js")
-},{"STATE":3,"action_bar":4,"program":11}],10:[function(require,module,exports){
+},{"STATE":3,"action_bar":4,"program":12}],11:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3281,7 +3053,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/menu.js")
-},{"STATE":3}],11:[function(require,module,exports){
+},{"STATE":3}],12:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3405,7 +3177,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/program/program.js")
-},{"STATE":3,"form_input":7,"input_test":8}],12:[function(require,module,exports){
+},{"STATE":3,"form_input":7,"input_test":9}],13:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -3845,18 +3617,21 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/quick_actions/quick_actions.js")
-},{"STATE":3}],13:[function(require,module,exports){
+},{"STATE":3}],14:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
 const { get } = statedb(fallback_module)
+const { resource } = require('helpers')
 
 module.exports = quick_editor
+let is_called
 
-async function quick_editor (opts) {
+async function quick_editor(opts) {
   // ----------------------------------------
   let init
   let data
+  let port
   const current_data = {}
 
   const { sdb, io, net } = await get(opts.sid)
@@ -3868,140 +3643,226 @@ async function quick_editor (opts) {
   // ----------------------------------------
   const el = document.createElement('div')
   el.classList.add('quick-editor')
-  const shadow = el.attachShadow({mode: 'closed'})
+  const shadow = el.attachShadow({ mode: 'closed' })
 
   shadow.innerHTML = `
       <button class="dots-button">⋮</button>
       <div class="quick-box">
         <div class="quick-menu hidden">
-          <!-- Top Tabs -->
-          <div class="top-btns">
+          <!-- Root Tabs -->
+          <div class="root-btns">
           </div>
-          <div class="top-tabs">
+          <div class="root-tabs">
           </div>
-          <button class="apply-button">Apply</button>
+          <div class="btn-box">
+            <button class="button">Apply</button>
+            ${is_called ? '' :
+              `<button class="button import">Import</button>
+              <button class="button export">Export</button>
+              <input type="file" accept='.json' hidden />`
+            }
+          </div>
         </div>
       </div>
       <style>
       </style>
       `
 
+
   const style = shadow.querySelector('style')
   const menu_btn = shadow.querySelector('.dots-button')
   const menu = shadow.querySelector('.quick-menu')
-  const textarea = shadow.querySelector('textarea')
-  const apply_btn = shadow.querySelector('.apply-button')
-  const top_btns = shadow.querySelector('.top-btns')
-  const top_tabs = shadow.querySelector('.top-tabs')
+  const import_btn = shadow.querySelector('.button.import')
+  const export_btn = shadow.querySelector('.button.export')
+  const input = shadow.querySelector('input')
+  const apply_btn = shadow.querySelector('.button')
+  const root_btns = shadow.querySelector('.root-btns')
+  const root_tabs = shadow.querySelector('.root-tabs')
   // ----------------------------------------
   // EVENTS
   // ----------------------------------------
   await sdb.watch(onbatch)
-  menu_btn.onclick = menu_click
-  apply_btn.onclick = apply
+  menu_btn.onclick = () => menu_click(false)
+  if (is_called) {
+    apply_btn.onclick = apply
+    menu_btn.onclick = () => menu_click(true)
+  }
+  else {
+    apply_btn.onclick = () => {
+      port.postMessage({ type: 'swtch', data: [{ name: current_data.dataset, type: current_data.node }] })
+    }
+    input.onchange = upload
+    import_btn.onclick = () => {
+      input.click()
+    }
+    export_btn.onclick = () => {
+      port.postMessage({ type: 'export_db', data: [{ name: current_data.dataset, type: current_data.node }] })
+    }
+  }
 
+  // ----------------------------------------
+  // IO
+  // ----------------------------------------
+  const item = resource()
   io.on(port => {
     const { by, to } = port
+    item.set(port.to, port)
     port.onmessage = event => {
       const txt = event.data
       const key = `[${by} -> ${to}]`
       data = txt
+      if (init) {
+        menu_click(false)
+        init = false
+        menu_click(false)
+      }
     }
   })
-  const port = await io.at(net.page.id)
-  
+  await io.at(net.page.id)
+  is_called = true
   return el
 
   // ----------------------------------------
   // FUNCTIONS
   // ----------------------------------------
-  function make_btn (name, classes) {
+  function upload(e) {
+    const file = e.target.files[0]
+    const reader = new FileReader()
+    reader.onload = event => {
+      const content = event.target.result
+      try {
+        data = JSON.parse(content)
+        port.postMessage({ type: 'import_db', data: [data] })
+      } catch (err) {
+        console.error('Invalid JSON file', err)
+      }
+    }
+    reader.readAsText(file)
+  }
+  function make_btn(name, classes, tab_id, key) {
     const btn = document.createElement('button')
     btn.textContent = name
     btn.classList.add(...classes.split(' '))
     btn.setAttribute('tab', name)
+    btn.setAttribute('tab_id', tab_id)
+    btn.setAttribute('key', key)
+    btn.setAttribute('title', name)
     return btn
   }
-  function make_tab (id, classes) {
+  function make_tab(id, classes, sub_classes) {
     const tab = document.createElement('div')
     tab.classList.add(...classes.split(' '))
-    tab.id = id.replaceAll('.', '')
+    tab.id = id.replaceAll(/[^A-Za-z0-9]/g, '')
     tab.innerHTML = `
-      <div class="sub-btns">
+      <div class="${sub_classes[0]}">
       </div>
-      <div class="subtab-content">
+      <div class="${sub_classes[1]}">
       </div>
     `
     return tab
   }
-  function make_textarea (id, classes, value) {
+  function make_textarea(id, classes, value) {
     const textarea = document.createElement('textarea')
-    textarea.id = id.replaceAll('.', '')
+    textarea.id = id.replaceAll(/[^A-Za-z0-9]/g, '')
     textarea.classList.add(...classes.split(' '))
-    textarea.value = value
+    textarea.value = typeof (value) === 'object' ? JSON.stringify(value, null, 2) : value
     textarea.placeholder = 'Type here...'
     return textarea
   }
-  async function menu_click () {
+  async function menu_click(call) {
+    port = await item.get(net.page.id)
     menu.classList.toggle('hidden')
-    if(init)
+    if (init)
       return
     init = true
-    Object.entries(data).forEach(([dataset, files], i) => {
+    root_btns.innerHTML = ''
+    root_tabs.innerHTML = ''
+    Object.entries(data).forEach(([node, datasets], k) => {
       let first = ''
-      if(!i){
+      if (!k) {
         first = ' active'
-        current_data.dataset = dataset
+        current_data.node = node
       }
-      const no_slash = dataset.split('/')[0]
-      const btn = make_btn(no_slash, `tab-button${first}`)
-      const tab = make_tab(no_slash, `tab-content${first}`)
+      const no_slash = node.split('/').at(-1)
+      const btn = make_btn(no_slash, `tab-button${first}`, node, 'node')
+      const tab = make_tab(no_slash, `tab-content${first}`, ['top-btns', 'top-tabs'])
 
-      btn.onclick = () => tab_btn_click(btn, top_btns, top_tabs, '.tab-content', 'dataset', dataset)
-      
-      top_btns.append(btn)
-      top_tabs.append(tab)
+      btn.onclick = () => tab_btn_click(btn, root_btns, root_tabs, '.root-tabs > .tab-content', 'node', node)
 
-      const sub_btns = tab.querySelector('.sub-btns')
-      const subtab = tab.querySelector('.subtab-content')
-      Object.entries(files).forEach(([file, raw], j) => {
+      root_btns.append(btn)
+      root_tabs.append(tab)
+
+      const top_btns = tab.querySelector('.top-btns')
+      const top_tabs = tab.querySelector('.top-tabs')
+      Object.entries(datasets).forEach(([dataset, files], i) => {
         let first = ''
-        if(!j){
+        if (!i) {
           first = ' active'
-          current_data.file = file
+          if (!k)
+            current_data.dataset = dataset
         }
-        const sub_btn = make_btn(file, `sub-btn${first}`)
-        const textarea = make_textarea(file, `subtab-textarea${first}`, raw)
+        const no_slash = dataset.split('/')[0]
+        const btn = make_btn(no_slash, `tab-button${first}`, dataset, 'dataset')
+        const tab = make_tab(no_slash, `tab-content${first}`, ['sub-btns', 'subtab-content'])
 
-        sub_btn.onclick = () => tab_btn_click(sub_btn, sub_btns, subtab, '.subtab-textarea', 'file', file)
+        btn.onclick = () => tab_btn_click(btn, top_btns, top_tabs, '.tab-content', 'dataset', dataset)
 
-        sub_btns.append(sub_btn)
-        subtab.append(textarea)
+        top_btns.append(btn)
+        top_tabs.append(tab)
+
+        const sub_btns = tab.querySelector('.sub-btns')
+        const subtab = tab.querySelector('.subtab-content')
+        Object.entries(files).forEach(([file, raw], j) => {
+          let first = ''
+          if (!j) {
+            first = ' active'
+            if (!i && !k)
+              current_data.file = file
+          }
+          const sub_btn = make_btn(file, `sub-btn${first}`, file, 'file')
+          const textarea = make_textarea(file, `subtab-textarea${first}`, raw)
+
+          sub_btn.onclick = () => tab_btn_click(sub_btn, sub_btns, subtab, '.subtab-textarea', 'file', file)
+
+          sub_btns.append(sub_btn)
+          subtab.append(textarea)
+        })
       })
     })
+
   }
-  function tab_btn_click (btn, btns, tabs, tab_class, key, name) {
+  function tab_btn_click(btn, btns, tabs, tab_class, key, name) {
     btns.querySelector('.active').classList.remove('active')
-    tabs.querySelector(tab_class+'.active').classList.remove('active')
+    tabs.querySelector(tab_class + '.active').classList.remove('active')
 
     btn.classList.add('active')
-    tabs.querySelector('#'+btn.getAttribute('tab').replaceAll('.', '')).classList.add('active')
-    current_data[key] = name
-
+    const tab = tabs.querySelector('#' + btn.getAttribute('tab').replaceAll(/[^A-Za-z0-9]/g, ''))
+    tab.classList.add('active')
+    current_data[btn.getAttribute('key')] = btn.getAttribute('tab_id')
+    const active_btns = tab.querySelectorAll('button.active')
+    active_btns.forEach(active_btn => {
+      current_data[active_btn.getAttribute('key')] = active_btn.getAttribute('tab_id')
+    })
   }
 
   function apply() {
-    port.postMessage({ type: 'put', args: [
-      current_data.dataset + current_data.file,
-      shadow.querySelector('.tab-content.active textarea.active').value
-    ]})
+    let raw = shadow.querySelector('.tab-content.active .tab-content.active textarea.active').value
+    if (current_data.file.split('.')[1] === 'json')
+      raw = JSON.parse(raw)
+    port.postMessage({
+      type: 'put', data: [
+        current_data.dataset + current_data.file,
+        raw,
+        current_data.node
+      ]
+    })
   }
-  
-  function inject (data) {
+
+  function inject(data) {
     style.textContent = data.join('\n')
   }
   async function onbatch(batch) {
-    for (const { type, paths } of batch){
+    for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
       const func = on[type] || fail
       func(data, type)
@@ -4013,11 +3874,11 @@ async function quick_editor (opts) {
 }
 
 
-function fallback_module(){
+function fallback_module() {
   return {
     api: fallback_instance
   }
-  function fallback_instance(){
+  function fallback_instance() {
     return {
       drive: {
         'style/': {
@@ -4036,6 +3897,7 @@ function fallback_module(){
             }
 
             .quick-menu {
+              display: flex;
               position: absolute;
               top: 100%;
               right: 0;
@@ -4044,11 +3906,17 @@ function fallback_module(){
               box-shadow: 0 2px 8px rgba(0,0,0,0.15);
               white-space: nowrap;
               z-index: 10;
-              width: 400px;
+              width: fit-content;
             }
 
             .hidden {
               display: none;
+            }
+            .root-btns{
+              display: flex;
+              flex-direction: column;
+              gap: 4px;
+              margin-right: 10px;
             }
 
             .top-btns {
@@ -4081,6 +3949,8 @@ function fallback_module(){
               flex-direction: column;
               gap: 4px;
               margin-left: 5px;
+              max-height: 400px;
+              overflow-y: auto;
             }
 
             .sub-btn {
@@ -4089,6 +3959,10 @@ function fallback_module(){
               border: none;
               cursor: pointer;
               text-align: right;
+              max-width: 100px;
+              text-overflow: ellipsis;
+              overflow: hidden;
+              min-height: 30px;
             }
             .sub-btn.active {
               background: #d0f0d0;
@@ -4103,12 +3977,13 @@ function fallback_module(){
               height: 400px;
               display: none;
               resize: vertical;
+              margin-right: 100px;
             }
             .subtab-textarea.active {
               display: block;
             }
 
-            .apply-button {
+            .button {
               display: block;
               margin-top: 10px;
               padding: 5px 10px;
@@ -4117,8 +3992,14 @@ function fallback_module(){
               border: none;
               border-radius: 4px;
               cursor: pointer;
+              height: fit-content;
+              self-align: end;
+              width: 100%;
             }
-
+            .btn-box {
+              border-left: 1px solid #ccc;
+              padding-left: 10px;
+            }
             `
           }
         }
@@ -4127,7 +4008,7 @@ function fallback_module(){
   }
 }
 }).call(this)}).call(this,"/src/node_modules/quick_editor.js")
-},{"STATE":3}],14:[function(require,module,exports){
+},{"STATE":3,"helpers":8}],15:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4459,7 +4340,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/space.js")
-},{"STATE":3,"actions":5,"console_history":6,"graph-explorer":2,"tabbed_editor":16}],15:[function(require,module,exports){
+},{"STATE":3,"actions":5,"console_history":6,"graph-explorer":2,"tabbed_editor":17}],16:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -4670,7 +4551,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/steps_wizard/steps_wizard.js")
-},{"STATE":3}],16:[function(require,module,exports){
+},{"STATE":3}],17:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5064,7 +4945,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabbed_editor/tabbed_editor.js")
-},{"STATE":3}],17:[function(require,module,exports){
+},{"STATE":3}],18:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5276,7 +5157,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/tabs/tabs.js")
-},{"STATE":3}],18:[function(require,module,exports){
+},{"STATE":3}],19:[function(require,module,exports){
 (function (__filename){(function (){
 const state = require('STATE')
 const state_db = state(__filename)
@@ -5459,7 +5340,7 @@ function fallback_module () {
   }
 }
 }).call(this)}).call(this,"/src/node_modules/tabsbar/tabsbar.js")
-},{"STATE":3,"tabs":17,"task_manager":19}],19:[function(require,module,exports){
+},{"STATE":3,"tabs":18,"task_manager":20}],20:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5552,7 +5433,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/task_manager.js")
-},{"STATE":3}],20:[function(require,module,exports){
+},{"STATE":3}],21:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5710,7 +5591,7 @@ function fallback_module() {
 }
 
 }).call(this)}).call(this,"/src/node_modules/taskbar/taskbar.js")
-},{"STATE":3,"action_bar":4,"tabsbar":18}],21:[function(require,module,exports){
+},{"STATE":3,"action_bar":4,"tabsbar":19}],22:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('STATE')
 const statedb = STATE(__filename)
@@ -5846,7 +5727,7 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/src/node_modules/theme_widget/theme_widget.js")
-},{"STATE":3,"space":14,"taskbar":20}],22:[function(require,module,exports){
+},{"STATE":3,"space":15,"taskbar":21}],23:[function(require,module,exports){
 const prefix = 'https://raw.githubusercontent.com/alyhxn/playproject/main/'
 const init_url = location.hash === '#dev' ? 'web/init.js' : prefix + 'src/node_modules/init.js'
 const args = arguments
@@ -5867,11 +5748,16 @@ fetch(init_url, fetch_opts).then(res => res.text()).then(async source => {
   require('./page') // or whatever is otherwise the main entry of our project
 })
 
-},{"./page":23}],23:[function(require,module,exports){
+},{"./page":24}],24:[function(require,module,exports){
 (function (__filename){(function (){
 const STATE = require('../src/node_modules/STATE')
 const statedb = STATE(__filename)
-const { sdb, io } = statedb(fallback_module)
+const admin_api = statedb.admin()
+const admin_on = {}
+admin_api.on(({type, data}) => {
+  admin_on[type] && admin_on[type]()
+})
+const { sdb, io, id } = statedb(fallback_module)
 const { drive, admin } = sdb
 /******************************************************************************
   PAGE
@@ -5892,6 +5778,7 @@ const graph_explorer = require('graph-explorer')
 const editor = require('../src/node_modules/quick_editor')
 const manager = require('../src/node_modules/manager')
 const steps_wizard = require('../src/node_modules/steps_wizard')
+const { resource } = require('../src/node_modules/helpers')
 
 const imports = {
   theme_widget,
@@ -5911,7 +5798,7 @@ const imports = {
 }
 config().then(() => boot({ sid: '' }))
 
-async function config () {
+async function config() {
   // const path = path => new URL(`../src/node_modules/${path}`, `file://${__dirname}`).href.slice(8)
   const html = document.documentElement
   const meta = document.createElement('meta')
@@ -5932,13 +5819,14 @@ async function config () {
 /******************************************************************************
   PAGE BOOT
 ******************************************************************************/
-async function boot (opts) {
+async function boot(opts) {
   // ----------------------------------------
   // ID + JSON STATE
   // ----------------------------------------
   const on = {
     style: inject,
-    ...sdb.admin.status.dataset.drive
+    ...sdb.admin.status.dataset.drive,
+    ...sdb.admin
   }
   // const status = {}
   // ----------------------------------------
@@ -5994,73 +5882,86 @@ async function boot (opts) {
     on_label_click: handle_label_click,
     on_select_all_toggle: handle_select_all_toggle
   }
+  const item = resource()
   io.on(port => {
     const { by, to } = port
+    item.set(port.to, port)
     port.onmessage = event => {
       const txt = event.data
       const key = `[${by} -> ${to}]`
-      on[txt.type] && on[txt.type](...txt.args, pairs[to])
+
+      on[txt.type] && on[txt.type](...txt.data)
 
     }
   })
-  
+
 
   const editor_subs = await sdb.get_sub("page>../src/node_modules/quick_editor")
+  // const subs = await sdb.watch(onbatch)
   const subs = (await sdb.watch(onbatch)).filter((_, index) => index % 2 === 0)
   console.log('Page subs', subs)
   const nav_menu_element = await navbar(subs[names.length], names, initial_checked_indices, menu_callbacks)
-  navbar_slot.replaceWith(nav_menu_element)
-  create_component(entries)
-  window.onload = scroll_to_initial_selected
 
-  
+
+
+  navbar_slot.replaceWith(nav_menu_element, await editor(editor_subs[0]))
+  await create_component(entries)
+  window.onload = scroll_to_initial_selected
+  send_quick_editor_data()
+  admin_on['import_db'] = send_quick_editor_data
+
   return el
-async function create_component (entries_obj) {
-  let index = 0
-  for (const [name, factory] of entries_obj) {
-    const is_initially_checked = initial_checked_indices.length === 0 || initial_checked_indices.includes(index + 1)
-    const outer = document.createElement('div')
-    outer.className = 'component-outer-wrapper'
-    outer.style.display = is_initially_checked ? 'block' : 'none'
-    outer.innerHTML = `
+  async function create_component(entries_obj) {
+    let index = 0
+    for (const [name, factory] of entries_obj) {
+      const is_initially_checked = initial_checked_indices.length === 0 || initial_checked_indices.includes(index + 1)
+      const outer = document.createElement('div')
+      outer.className = 'component-outer-wrapper'
+      outer.style.display = is_initially_checked ? 'block' : 'none'
+      outer.innerHTML = `
       <div class="component-name-label">${name}</div>
       <div class="component-wrapper"></div>
     `
-    const inner = outer.querySelector('.component-wrapper')
-    const component_content = await factory(subs[index])
-    console.log('component_content', index)
-    component_content.className = 'component-content'
-    
-    const node_id = admin.status.s2i[subs[index].sid]
-    const editor_id = admin.status.a2i[admin.status.s2i[editor_subs[index].sid]]
-    inner.append(component_content, await editor(editor_subs[index]))
-    
+      const inner = outer.querySelector('.component-wrapper')
+      const component_content = await factory(subs[index])
+      component_content.className = 'component-content'
 
-    const result = {}
-    const drive = admin.status.dataset.drive
+      const node_id = admin.status.s2i[subs[index].sid]
+      const editor_index = index + 1
+      inner.append(component_content, await editor(editor_subs[editor_index]))
 
-    pairs[editor_id] = node_id
-    
-    const datasets = drive.list('', node_id)
-    for(dataset of datasets) {
-      result[dataset] = {}
-      const files = drive.list(dataset, node_id)
-      for(file of files){
-        result[dataset][file] = (await drive.get(dataset+file, node_id)).raw
+
+      const result = {}
+      const drive = admin.status.dataset.drive
+
+
+      const modulepath = node_id.split(':')[0]
+      const fields = admin.status.db.read_all(['state', modulepath])
+      const nodes = Object.keys(fields).filter(field => !isNaN(Number(field.split(':').at(-1))))
+      for (const node of nodes) {
+        result[node] = {}
+        const datasets = drive.list('', node)
+        for (dataset of datasets) {
+          result[node][dataset] = {}
+          const files = drive.list(dataset, node)
+          for (file of files) {
+            result[node][dataset][file] = (await drive.get(dataset + file, node)).raw
+          }
+        }
       }
+
+      const editor_id = admin.status.a2i[admin.status.s2i[editor_subs[editor_index].sid]]
+      const port = await item.get(editor_id)
+      // await io.at(editor_id)
+      port.postMessage(result)
+
+      components_wrapper.appendChild(outer)
+      wrappers[index] = { outer, inner, name, checkbox_state: is_initially_checked }
+      index++
     }
-    
-
-    const port = await io.at(editor_id)
-    port.postMessage(result)
-
-    components_wrapper.appendChild(outer)
-    wrappers[index] = { outer, inner, name, checkbox_state: is_initially_checked }
-    index++
   }
-}
 
-  function scroll_to_initial_selected () {
+  function scroll_to_initial_selected() {
     if (selected_name_param) {
       const index = names.indexOf(selected_name_param)
       if (index !== -1 && wrappers[index]) {
@@ -6077,14 +5978,14 @@ async function create_component (entries_obj) {
     }
   }
 
-  function clear_selection_highlight () {
+  function clear_selection_highlight() {
     if (current_selected_wrapper) {
       current_selected_wrapper.style.backgroundColor = ''
     }
     current_selected_wrapper = null
   }
 
-  function update_url (selected_name = url_params.get('selected')) {
+  function update_url(selected_name = url_params.get('selected')) {
     const checked_indices = wrappers.reduce((acc, w, i) => {
       if (w.checkbox_state) { acc.push(i + 1) }
       return acc
@@ -6101,7 +6002,7 @@ async function create_component (entries_obj) {
     window.history.replaceState(null, '', new_url)
   }
 
-  function handle_checkbox_change (detail) {
+  function handle_checkbox_change(detail) {
     const { index, checked } = detail
     if (wrappers[index]) {
       wrappers[index].outer.style.display = checked ? 'block' : 'none'
@@ -6114,7 +6015,7 @@ async function create_component (entries_obj) {
     }
   }
 
-  function handle_label_click (detail) {
+  function handle_label_click(detail) {
     const { index, name } = detail
     if (wrappers[index]) {
       const target_wrapper = wrappers[index].outer
@@ -6130,7 +6031,7 @@ async function create_component (entries_obj) {
     }
   }
 
-  function handle_select_all_toggle (detail) {
+  function handle_select_all_toggle(detail) {
     const { selectAll: select_all } = detail
     wrappers.forEach((w, index) => {
       w.outer.style.display = select_all ? 'block' : 'none'
@@ -6141,10 +6042,9 @@ async function create_component (entries_obj) {
   }
 
   async function onbatch(batch) {
-    for (const { type, paths } of batch){
+    for (const { type, paths } of batch) {
       const data = await Promise.all(paths.map(path => drive.get(path).then(file => file.raw)))
-      console.log('onbatch', type, data)
-      const func = on[type] || fail
+      const func = on[type] || (() => { })
       func(data, type)
     }
   }
@@ -6152,8 +6052,29 @@ async function create_component (entries_obj) {
   function inject(data) {
     style.innerHTML = data.join('\n')
   }
+  async function send_quick_editor_data() {
+      const inputs = sdb.admin.get_dataset() || []
+      const result = {}
+      inputs.forEach(type => {
+        result[type] = {}
+        const datasets = sdb.admin.get_dataset({ type })
+        datasets && Object.values(datasets).forEach(name => {
+          result[type][name] = {}
+          const ds = sdb.admin.get_dataset({ type, name: name })
+          ds.forEach(ds_id => {
+            const files = admin.status.db.read(['state', ds_id]).files || []
+            result[type][name][ds_id] = files
+          })
+        })
+      })
+      const editor_id = admin.status.a2i[admin.status.s2i[editor_subs[0].sid]]
+      const port = await item.get(editor_id)
+      // await io.at(editor_id)
+      port.postMessage(result)
+
+  }
 }
-function fallback_module () {
+function fallback_module() {
   const menuname = '../src/node_modules/menu'
   const names = [
     '../src/node_modules/theme_widget',
@@ -6173,6 +6094,7 @@ function fallback_module () {
   ]
   const subs = {}
   names.forEach(subgen)
+  subs['../src/node_modules/helpers'] = 0
   subs['../src/node_modules/tabs'] = {
     $: '',
     0: '',
@@ -6271,7 +6193,7 @@ function fallback_module () {
       'mode': 'mode'
     }
   }
-  subs[menuname] = { 
+  subs[menuname] = {
     $: '',
     0: '',
     mapping: {
@@ -6284,10 +6206,10 @@ function fallback_module () {
       'style': 'style'
     }
   }
-  for(i = 0; i < Object.keys(subs).length - 2; i++){
+  for (i = 0; i < Object.keys(subs).length - 1; i++) {
     subs['../src/node_modules/quick_editor'][i] = quick_editor$
   }
-  
+
   return {
     _: subs,
     drive: {
@@ -6323,7 +6245,7 @@ function fallback_module () {
             padding: 15px;
             border: 3px solid #666;
             resize: both;
-            overflow: auto;
+            overflow: visible;
             border-radius: 0px;
             background-color: #eceff4;
             min-height: 50px;
@@ -6386,28 +6308,49 @@ function fallback_module () {
         resize: both;
         overflow: auto;
       }
+      .quick-editor {
+        position: absolute;
+        z-index: 100;
+        top: 0;
+        right: 0;
+      }
       .component-wrapper:hover .quick-editor {
         display: block;
       }
-      .quick-editor {
+      .component-wrapper > .quick-editor {
         display: none;
-        position: absolute;
         top: -5px;
         right: -10px;
-        z-index: 16;
-      }`
-        }
       }
+      
+      `
+
+        }
+      },
+      'icons/': {},
+      'variables/': {},
+      'scroll/': {},
+      'commands/': {},
+      'actions/': {},
+      'hardcons/': {},
+      'files/': {},
+      'highlight/': {},
+      'count/': {},
+      'entries/': {},
+      'active_tab/': {},
+      'runtime/': {},
+      'mode/': {},
+      'data/': {}
     }
   }
-  function quick_editor$ (args, tools, [quick_editor]){
+  function quick_editor$(args, tools, [quick_editor]) {
     const state = quick_editor()
     state.net = {
       page: {}
     }
     return state
   }
-  function subgen (name) {
+  function subgen(name) {
     subs[name] = {
       $: '',
       0: '',
@@ -6419,4 +6362,4 @@ function fallback_module () {
 }
 
 }).call(this)}).call(this,"/web/page.js")
-},{"../src/node_modules/STATE":3,"../src/node_modules/action_bar":4,"../src/node_modules/actions":5,"../src/node_modules/console_history":6,"../src/node_modules/manager":9,"../src/node_modules/menu":10,"../src/node_modules/quick_actions":12,"../src/node_modules/quick_editor":13,"../src/node_modules/space":14,"../src/node_modules/steps_wizard":15,"../src/node_modules/tabbed_editor":16,"../src/node_modules/tabs":17,"../src/node_modules/tabsbar":18,"../src/node_modules/task_manager":19,"../src/node_modules/taskbar":20,"../src/node_modules/theme_widget":21,"graph-explorer":2}]},{},[22]);
+},{"../src/node_modules/STATE":3,"../src/node_modules/action_bar":4,"../src/node_modules/actions":5,"../src/node_modules/console_history":6,"../src/node_modules/helpers":8,"../src/node_modules/manager":10,"../src/node_modules/menu":11,"../src/node_modules/quick_actions":13,"../src/node_modules/quick_editor":14,"../src/node_modules/space":15,"../src/node_modules/steps_wizard":16,"../src/node_modules/tabbed_editor":17,"../src/node_modules/tabs":18,"../src/node_modules/tabsbar":19,"../src/node_modules/task_manager":20,"../src/node_modules/taskbar":21,"../src/node_modules/theme_widget":22,"graph-explorer":2}]},{},[23]);
