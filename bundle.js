@@ -4357,6 +4357,7 @@ async function steps_wizard (opts, protocol) {
   }
 
   let variables = []
+  let currentActiveStep = 0
 
   let _ = null
   if(protocol){
@@ -4370,8 +4371,6 @@ async function steps_wizard (opts, protocol) {
   <div class="steps-wizard main">
     <div class="steps-container">
       <div class="steps-slot"></div>
-      <button class="nav-arrow left" id="leftArrow">‹</button>
-      <button class="nav-arrow right" id="rightArrow">›</button>
     </div>
   </div>
   <style>
@@ -4379,19 +4378,13 @@ async function steps_wizard (opts, protocol) {
   `
 
   const style = shadow.querySelector('style')
-  const steps_container = shadow.querySelector('.steps-container')
   const steps_entries = shadow.querySelector('.steps-slot')
-  const leftArrow = shadow.querySelector('#leftArrow')
-  const rightArrow = shadow.querySelector('#rightArrow')
-  
   const subs = await sdb.watch(onbatch)
-
-  setupArrowNavigation()
 
   // for demo purpose
   render_steps([
     {name: "Optional Step", "type": "optional", "is_completed": false, "component": "form_input", "status": "default", "data": ""},
-	  {name: "Step 2", "type": "mandatory", "is_completed": false, "component": "form_input", "status": "default", "data": ""},
+	  {name: "Step 2 testingasadasdadasdasdaasdasdsassss", "type": "mandatory", "is_completed": false, "component": "form_input", "status": "default", "data": ""},
     {name: "Step 3", "type": "mandatory", "is_completed": false, "component": "form_input", "status": "default", "data": ""},
     {name: "Step 4", "type": "mandatory", "is_completed": false, "component": "form_input", "status": "default", "data": ""},
     {name: "Step 5", "type": "mandatory", "is_completed": false, "component": "form_input", "status": "default", "data": ""},
@@ -4405,53 +4398,6 @@ async function steps_wizard (opts, protocol) {
   ])
 
   return el
-
-  function setupArrowNavigation() {
-    function updateArrows() {
-      const scrollLeft = steps_entries.scrollLeft
-      const maxScroll = steps_entries.scrollWidth - steps_entries.clientWidth
-      
-      if (scrollLeft > 0) {
-        leftArrow.classList.add('visible')
-        steps_container.classList.add('has-left-overflow')
-      } else {
-        leftArrow.classList.remove('visible')
-        steps_container.classList.remove('has-left-overflow')
-      }
-      
-      if (scrollLeft < maxScroll - 1) {
-        rightArrow.classList.add('visible')
-        steps_container.classList.add('has-right-overflow')
-      } else {
-        rightArrow.classList.remove('visible')
-        steps_container.classList.remove('has-right-overflow')
-      }
-    }
-
-    leftArrow.addEventListener('click', () => {
-      const stepWidth = steps_entries.children[0]?.offsetWidth || 200
-      steps_entries.scrollBy({
-        left: -(stepWidth + 8),
-        behavior: 'smooth'
-      })
-    })
-
-    rightArrow.addEventListener('click', () => {
-      const stepWidth = steps_entries.children[0]?.offsetWidth || 200
-      steps_entries.scrollBy({
-        left: stepWidth + 8,
-        behavior: 'smooth'
-      })
-    })
-
-    steps_entries.addEventListener('scroll', updateArrows)
-    
-    window.addEventListener('resize', () => {
-      setTimeout(updateArrows, 100)
-    })
-
-    setTimeout(updateArrows, 100)
-  }
   
   function onmessage ({ type, data }) {
     console.log('steps_ data', type, data)
@@ -4471,6 +4417,7 @@ async function steps_wizard (opts, protocol) {
       const btn = document.createElement('button')
       btn.className = 'step-button'
       btn.textContent = step.name + (step.type === 'optional' ? ' *' : '')
+      btn.title = btn.textContent
       btn.setAttribute('data-step', index + 1)
 
       const accessible = can_access(index, steps)
@@ -4483,28 +4430,40 @@ async function steps_wizard (opts, protocol) {
 
       btn.classList.add(`step-${status}`)
 
+      if (index === currentActiveStep - 1 && index > 0) {
+        btn.classList.add('back')
+      }
+      if (index === currentActiveStep + 1 && index < steps.length - 1) {
+        btn.classList.add('next')
+      }
+      if (index === currentActiveStep) {
+        btn.classList.add('active')
+      }
+
       btn.onclick = async () => {
         console.log('Clicked:', step)
+        currentActiveStep = index
+        center_step(btn)
+        render_steps(steps)
         _?.up({type: 'step_clicked', data: {...step, index, total_steps: steps.length, is_accessible: accessible}})
       };
 
       steps_entries.appendChild(btn)
     });
+  }
+
+  
+  function center_step(step_button) {
+    const container_width = steps_entries.clientWidth
+    const step_left = step_button.offsetLeft
+    const step_width = step_button.offsetWidth
     
-    setTimeout(() => {
-      const scrollLeft = steps_entries.scrollLeft
-      const maxScroll = steps_entries.scrollWidth - steps_entries.clientWidth
-      
-      if (scrollLeft > 0) {
-        leftArrow.classList.add('visible')
-        steps_container.classList.add('has-left-overflow')
-      }
-      
-      if (scrollLeft < maxScroll - 1) {
-        rightArrow.classList.add('visible')
-        steps_container.classList.add('has-right-overflow')
-      }
-    }, 100)
+    const center_position = step_left - (container_width / 2) + (step_width / 2)
+    
+    steps_entries.scrollTo({
+      left: center_position,
+      behavior: 'smooth'
+    })
   }
 
   function can_access(index, steps) {
